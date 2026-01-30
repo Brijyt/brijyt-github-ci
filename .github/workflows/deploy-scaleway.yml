@@ -1,0 +1,84 @@
+name: Deploy to Scaleway
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      image-ref:
+        required: true
+        type: string
+      scw-container-id:
+        required: false
+        type: string
+      scw-project-id:
+        required: true
+        type: string
+      deploy-map:
+        description: 'JSON array of {"container_id":"...","deploy_config":".github/configs/xxx.json"}'
+        required: false
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: ${{ inputs.environment }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.deploy-map || format('[{{"container_id":"{0}","deploy_config":"{1}"}}]', inputs.scw-container-id, '.github/configs/deploy-config.json')) }}
+    steps:
+      - name: Deploy to Scaleway Container (${{ inputs.environment }})
+        run: echo "Using Scaleway API directly for ${{ inputs.environment }}"
+
+      - name: Download configuration
+        uses: actions/checkout@v4
+        with:
+          path: config
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Fetch and substitute secrets from Scaleway
+        uses: brijyt/brijyt-github-ci/actions/scaleway-secrets@main
+        with:
+          config: config/${{ matrix.deploy_config }}
+          environment: ${{ inputs.environment }}
+          project-id: ${{ inputs.scw-project-id }}
+        env:
+          SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
+
+      - name: Build request body
+        id: payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq --arg registry_image "${{ inputs.image-ref }}" \
+             '. + {"registry_image": $registry_image}' \
+             config/${{ matrix.deploy_config }} > request_body.json
+
+      - name: Update container (PATCH)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Updating container ${{ matrix.container_id }}"
+          curl -sS -X PATCH \
+            -H "X-Auth-Token: ${{ secrets.SCW_SECRET_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d @request_body.json \
+            "https://api.scaleway.com/containers/v1beta1/regions/fr-par/containers/${{ matrix.container_id }}"
+
+      - name: Deploy container (POST)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Deploying container ${{ matrix.container_id }}"
+          curl -sS -X POST \
+            -H "X-Auth-Token: ${{ secrets.SCW_SECRET_KEY }}" \
+            -H "Content-Type: application/json" \
+            "https://api.scaleway.com/containers/v1beta1/regions/fr-par/containers/${{ matrix.container_id }}/deploy"
+
+      - name: Cleanup
+        run: rm -f request_body.json

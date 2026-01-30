@@ -1,0 +1,71 @@
+name: Python test
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        required: false
+        type: string
+        default: "3.12"
+      requirements-file:
+        required: false
+        type: string
+        default: "requirements.txt"
+      test-path:
+        required: false
+        type: string
+        default: "test/unit/"
+      upload-pacts:
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      artifact-name:
+        description: "Name of the artifact containing pacts directory (when upload-pacts is true)"
+        value: ${{ jobs.tests.outputs.artifact-name }}
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    outputs:
+      artifact-name: ${{ steps.artifact-name.outputs.name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ${{ inputs.requirements-file }}
+
+      - name: Run unit tests
+        run: pytest ${{ inputs.test-path }} --cov=app --cov-report=term-missing
+
+      - name: Run Pact consumer tests
+        if: inputs.upload-pacts
+        run: pytest test/pact/consumer/ -v
+
+      - name: Set artifact name
+        id: artifact-name
+        run: |
+          if [ "${{ inputs.upload-pacts }}" = "true" ]; then
+            echo "name=pacts-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=none" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload pacts directory
+        if: inputs.upload-pacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.artifact-name.outputs.name }}
+          path: pacts/
+          if-no-files-found: ignore

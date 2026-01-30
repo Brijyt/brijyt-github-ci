@@ -1,0 +1,45 @@
+name: "Scaleway Secrets Substitution"
+description: "Fetch secrets from Scaleway Secret Manager and substitute them in a configuration file"
+author: "Brijyt"
+
+branding:
+  icon: "lock"
+  color: "purple"
+
+inputs:
+  config:
+    description: "Path to the configuration file"
+    required: true
+  environment:
+    description: "Environment name (dev, staging, prod)"
+    required: true
+  project-id:
+    description: "Scaleway project ID"
+    required: true
+  region:
+    description: "Scaleway region"
+    required: false
+    default: "fr-par"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install dependencies
+      shell: bash
+      run: pip install -r ${{ github.action_path }}/requirements.txt
+
+    - name: Fetch and substitute secrets
+      shell: bash
+      env:
+        SCW_SECRET_KEY: ${{ env.SCW_SECRET_KEY }}
+      run: |
+        python ${{ github.action_path }}/fetch_secrets.py \
+          --config "${{ inputs.config }}" \
+          --env "${{ inputs.environment }}" \
+          --project-id "${{ inputs.project-id }}" \
+          --region "${{ inputs.region }}"

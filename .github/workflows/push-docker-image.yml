@@ -1,0 +1,82 @@
+name: Push Docker image
+
+on:
+  workflow_call:
+    inputs:
+      registry:
+        required: true
+        type: string
+      image-name:
+        required: true
+        type: string
+      artifact-name:
+        required: true
+        type: string
+    outputs:
+      image-ref:
+        description: "First pushed tag, usable for deployment"
+        value: ${{ jobs.push-image.outputs.image-ref }}
+    secrets:
+      scw-secret-key:
+        required: true
+
+jobs:
+  push-image:
+    runs-on: ubuntu-latest
+    outputs:
+      image-ref: ${{ steps.expose.outputs.image_ref }}
+    steps:
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+
+      - name: Load Docker image
+        run: docker load -i image.tar
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ inputs.registry }}/${{ inputs.image-name }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=ref,event=tag
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.registry }}
+          username: nologin
+          password: ${{ secrets.scw-secret-key }}
+
+      - name: Tag and push Docker image
+        id: push
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOCAL_IMAGE="$(docker images --format '{{.Repository}}:{{.Tag}}' | head -1)"
+          if [[ -z "${LOCAL_IMAGE}" ]]; then
+            echo "No image loaded." >&2
+            exit 1
+          fi
+          mapfile -t TAGS < <(printf "%s\n" '${{ steps.meta.outputs.tags }}' | tr ' ' '\n' | sed '/^$/d')
+          if [[ "${#TAGS[@]}" -eq 0 ]]; then
+            echo "No Docker tag detected." >&2
+            exit 1
+          fi
+          for tag in "${TAGS[@]}"; do
+            docker tag "${LOCAL_IMAGE}" "${tag}"
+            docker push "${tag}"
+          done
+          echo "first_tag=${TAGS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Expose image ref
+        id: expose
+        run: echo "image_ref=${{ steps.push.outputs.first_tag }}" >> "$GITHUB_OUTPUT"

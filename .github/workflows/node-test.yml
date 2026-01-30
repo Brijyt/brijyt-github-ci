@@ -1,0 +1,36 @@
+name: Node test
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: "Node.js version"
+        required: false
+        type: string
+        default: "20"
+      cache:
+        description: "Package manager for cache (npm or yarn)"
+        required: false
+        type: string
+        default: "npm"
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.cache }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
