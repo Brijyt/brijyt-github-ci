@@ -7,8 +7,10 @@ on:
         required: true
         type: string
       image-name:
-        required: true
+        description: "Optional image name; if empty, derived from repo name (without brijyt- prefix)"
+        required: false
         type: string
+        default: ""
       artifact-name:
         required: true
         type: string
@@ -26,6 +28,16 @@ jobs:
     outputs:
       image-ref: ${{ steps.expose.outputs.image_ref }}
     steps:
+      - name: Set image name
+        id: set-image-name
+        run: |
+          if [ -n "${{ inputs.image-name }}" ]; then
+            echo "name=${{ inputs.image-name }}" >> "$GITHUB_OUTPUT"
+          else
+            repo_name="${GITHUB_REPOSITORY#*/}"
+            echo "name=${repo_name#brijyt-}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Download image artifact
         uses: actions/download-artifact@v4
         with:
@@ -38,7 +50,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ inputs.registry }}/${{ inputs.image-name }}
+          images: ${{ inputs.registry }}/${{ steps.set-image-name.outputs.name }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr

@@ -13,14 +13,16 @@ Shared reusable GitHub Actions workflows and the **scaleway-secrets** composite 
 |----------|--------|---------|---------|
 | [deploy-scaleway](.github/workflows/deploy-scaleway.yml) | environment, image-ref, scw-project-id, scw-container-id?, deploy-map? | - | SCW_SECRET_KEY |
 | [node-test](.github/workflows/node-test.yml) | node-version?, cache? | - | - |
-| [node-build-push-docker](.github/workflows/node-build-push-docker.yml) | registry, image-name, build-args?, app-name? | image-ref | scw-secret-key |
+| [node-build-push-docker](.github/workflows/node-build-push-docker.yml) | registry, image-name?, build-args?, app-name? | image-ref | scw-secret-key |
 | [python-test](.github/workflows/python-test.yml) | python-version?, requirements-file?, test-path?, upload-pacts? | artifact-name | - |
-| [python-build-push-docker](.github/workflows/python-build-push-docker.yml) | registry, image-name, free-disk-space? | image-ref | scw-secret-key |
+| [python-build-push-docker](.github/workflows/python-build-push-docker.yml) | registry, image-name?, free-disk-space? | image-ref | scw-secret-key |
 | [scala-test](.github/workflows/scala-test.yml) | - | artifact-name | PACT_BROKER_PASSWORD (vars: PACT_BROKER_*) |
-| [scala-build-docker](.github/workflows/scala-build-docker.yml) | registry, image-name | artifact-name, local-image | - |
-| [push-docker-image](.github/workflows/push-docker-image.yml) | registry, image-name, artifact-name | image-ref | scw-secret-key |
+| [scala-build-docker](.github/workflows/scala-build-docker.yml) | registry, image-name? | artifact-name, local-image | - |
+| [push-docker-image](.github/workflows/push-docker-image.yml) | registry, image-name?, artifact-name | image-ref | scw-secret-key |
 | [pact-publish](.github/workflows/pact-publish.yml) | artifact-name, pacts-source (pacts-dir \| target-dir) | - | PACT_BROKER_PASSWORD (vars: PACT_BROKER_*) |
 | [pr-validation-scala](.github/workflows/pr-validation-scala.yml) | java-version? | - | - |
+
+For the build/push workflows (node-build-push-docker, python-build-push-docker, scala-build-docker, push-docker-image), **image-name** is optional. When omitted, the image name is derived from the repository name (without the `brijyt-` prefix), e.g. `brijyt-agentic-reply-api` → `agentic-reply-api`. Pass **image-name** to override (e.g. `brijyt-docs` using `image-name: likec4-doc`).
 
 ## Versioning
 
@@ -50,7 +52,6 @@ jobs:
     uses: brijyt/brijyt-github-ci/.github/workflows/node-build-push-docker.yml@main
     with:
       registry: ${{ vars.REGISTRY }}
-      image-name: ${{ vars.IMAGE_NAME }}
     secrets:
       scw-secret-key: ${{ secrets.SCW_SECRET_KEY }}
   deploy-dev:

@@ -7,8 +7,10 @@ on:
         required: true
         type: string
       image-name:
-        required: true
+        description: "Optional image name; if empty, derived from repo name (without brijyt- prefix)"
+        required: false
         type: string
+        default: ""
     outputs:
       artifact-name:
         description: "Name of the artifact containing the saved Docker image"
@@ -29,6 +31,16 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
+
+      - name: Set image name
+        id: set-image-name
+        run: |
+          if [ -n "${{ inputs.image-name }}" ]; then
+            echo "name=${{ inputs.image-name }}" >> "$GITHUB_OUTPUT"
+          else
+            repo_name="${GITHUB_REPOSITORY#*/}"
+            echo "name=${repo_name#brijyt-}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -52,7 +64,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          LOCAL_IMAGE="$(docker images --format '{{.Repository}}:{{.Tag}}' | grep -E '${{ inputs.image-name }}' | head -1)"
+          LOCAL_IMAGE="$(docker images --format '{{.Repository}}:{{.Tag}}' | grep -E '${{ steps.set-image-name.outputs.name }}' | head -1)"
           if [[ -z "${LOCAL_IMAGE}" ]]; then
             echo "No local sbt image found." >&2
             exit 1
