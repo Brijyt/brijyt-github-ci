@@ -19,6 +19,10 @@ on:
         required: false
         type: boolean
         default: false
+      run-pact-provider:
+        required: false
+        type: boolean
+        default: false
     outputs:
       artifact-name:
         description: "Name of the artifact containing pacts directory (when upload-pacts is true)"
@@ -52,6 +56,14 @@ jobs:
       - name: Run Pact consumer tests
         if: inputs.upload-pacts
         run: pytest test/pact/consumer/ -v
+
+      - name: Run Pact provider verification
+        if: inputs.run-pact-provider
+        env:
+          PACT_BROKER_BASE_URL: ${{ vars.PACT_BROKER_URL }}
+          PACT_BROKER_USERNAME: ${{ vars.PACT_BROKER_USERNAME }}
+          PACT_BROKER_PASSWORD: ${{ secrets.PACT_BROKER_PASSWORD }}
+        run: pytest -m pact test/pact/provider/ -v
 
       - name: Set artifact name
         id: artifact-name
