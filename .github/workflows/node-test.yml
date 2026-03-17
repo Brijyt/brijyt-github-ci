@@ -13,6 +13,11 @@ on:
         required: false
         type: string
         default: "npm"
+      run-pact:
+        description: "Run Pact consumer tests and upload pacts artifact"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   tests:
@@ -34,3 +39,15 @@ jobs:
 
       - name: Build application
         run: npm run build
+
+      - name: Run tests (including Pact when run-pact is true)
+        if: inputs.run-pact
+        run: npm run test:run
+
+      - name: Upload pacts
+        if: inputs.run-pact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pacts
+          path: pacts/
+          if-no-files-found: error
