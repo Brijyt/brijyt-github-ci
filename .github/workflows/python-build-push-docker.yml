@@ -75,8 +75,14 @@ jobs:
       - name: Extract version and build number
         id: version
         run: |
-          BUILD_NUMBER="${{ github.sha }}"
-          echo "build_number=${BUILD_NUMBER}" >> "$GITHUB_OUTPUT"
+          TESTED_SHA="${{ github.sha }}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            SOURCE_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            SOURCE_SHA="${TESTED_SHA}"
+          fi
+          echo "build_number=${SOURCE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "tested_sha=${TESTED_SHA}" >> "$GITHUB_OUTPUT"
           if [[ "${{ github.ref_type }}" == "tag" && "${{ github.ref_name }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
             VERSION="${{ github.ref_name }}"
             VERSION="${VERSION#v}"
@@ -108,6 +114,7 @@ jobs:
           build-args: |
             APP_VERSION=${{ steps.version.outputs.version }}
             APP_BUILD_NUMBER=${{ steps.version.outputs.build_number }}
+            APP_TESTED_SHA=${{ steps.version.outputs.tested_sha }}
 
       - name: Expose image ref
         id: expose
