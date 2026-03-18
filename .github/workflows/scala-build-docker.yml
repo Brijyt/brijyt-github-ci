@@ -54,6 +54,15 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Set BuildInfo SHAs for Docker image
+        run: |
+          echo "BUILD_TESTED_SHA=${{ github.sha }}" >> "$GITHUB_ENV"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "BUILD_SOURCE_SHA=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_ENV"
+          else
+            echo "BUILD_SOURCE_SHA=${{ github.sha }}" >> "$GITHUB_ENV"
+          fi
+
       - name: Build Docker image with sbt
         run: sbt docker:publishLocal
         env:
