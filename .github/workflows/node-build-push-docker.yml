@@ -75,6 +75,40 @@ jobs:
           fi
           echo "app_version=${{ inputs.app-name }}@${VERSION}" >> "$GITHUB_OUTPUT"
 
+      # PR / merge queue: last commit on the PR branch (tested before merge). Other events: current checkout SHA.
+      - name: Resolve BUILD_TESTED_SHA for health metadata
+        id: health_shas
+        run: |
+          case "${{ github.event_name }}" in
+            pull_request)
+              echo "tested_sha=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+              ;;
+            merge_group)
+              echo "tested_sha=${{ github.event.merge_group.head_sha }}" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "tested_sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - name: Prepare Docker build-args
+        id: prep-args
+        env:
+          EXTRA_BUILD_ARGS: ${{ inputs.build-args }}
+        run: |
+          {
+            echo 'args<<EOF'
+            if [[ -n "${{ inputs.app-name }}" ]]; then
+              echo "VITE_APP_VERSION=${{ steps.version.outputs.app_version }}"
+            fi
+            echo "BUILD_SOURCE_SHA=${{ github.sha }}"
+            echo "BUILD_TESTED_SHA=${{ steps.health_shas.outputs.tested_sha }}"
+            if [[ -n "${EXTRA_BUILD_ARGS}" ]]; then
+              printf '%s\n' "${EXTRA_BUILD_ARGS}"
+            fi
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -95,7 +129,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          build-args: ${{ inputs.app-name != '' && format('VITE_APP_VERSION={0}', steps.version.outputs.app_version) || inputs.build-args }}
+          build-args: ${{ steps.prep-args.outputs.args }}
 
       - name: Expose image ref
         id: expose
