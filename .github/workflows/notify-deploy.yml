@@ -1,0 +1,102 @@
+name: Notify deploy
+on:
+  workflow_call:
+    inputs:
+      verified-dev:
+        description: "'true' when dev was verified"
+        required: false
+        type: string
+        default: "false"
+      verified-staging:
+        description: "'true' when staging was verified"
+        required: false
+        type: string
+        default: "false"
+      verified-prod:
+        description: "'true' when prod was verified"
+        required: false
+        type: string
+        default: "false"
+    secrets:
+      slack-bot-token:
+        required: true
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve Linear ticket and host links
+        id: meta
+        shell: bash
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          LINEAR_ID=""
+          for candidate in "${PR_HEAD_REF:-}" "${HEAD_REF:-}" "${REF_NAME:-}"; do
+            [[ -n "${candidate}" ]] || continue
+            if [[ "${candidate}" =~ (BRI-[0-9]+) ]]; then
+              LINEAR_ID="${BASH_REMATCH[1]}"
+              break
+            fi
+          done
+          if [[ -z "${LINEAR_ID}" ]]; then
+            MSG="${COMMIT_MSG:-}"
+            [[ -z "${MSG}" ]] && MSG="${PR_TITLE:-}"
+            if [[ "${MSG}" =~ (BRI-[0-9]+) ]]; then
+              LINEAR_ID="${BASH_REMATCH[1]}"
+            fi
+          fi
+          LINEAR_SUFFIX=""
+          if [[ -n "${LINEAR_ID}" ]]; then
+            LINEAR_URL="https://linear.app/brijyt/issue/${LINEAR_ID}"
+            LINEAR_SUFFIX=" | <${LINEAR_URL}|${LINEAR_ID}>"
+          fi
+          {
+            printf 'linear_suffix=%s\n' "${LINEAR_SUFFIX}"
+            REPO="${GITHUB_REPOSITORY#*/}"
+            APP_NAME="${REPO#brijyt-}"
+            if [[ "${REPO}" == *-web ]]; then
+              printf 'host_suffix_dev=%s\n' " | <https://${APP_NAME}-dev.brijyt.ai|Open dev>"
+              printf 'host_suffix_staging=%s\n' " | <https://${APP_NAME}-staging.brijyt.ai|Open staging>"
+              printf 'host_suffix_prod=%s\n' " | <https://${APP_NAME}-prod.brijyt.ai|Open prod>"
+            else
+              printf 'host_suffix_dev=%s\n' ""
+              printf 'host_suffix_staging=%s\n' ""
+              printf 'host_suffix_prod=%s\n' ""
+            fi
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Notify Slack (dev)
+        if: ${{ inputs.verified-dev == 'true' }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.slack-bot-token }}
+          payload: |
+            channel: "#ci-cd"
+            text: "Deployed *${{ github.repository }}* to *dev* (${{ github.ref_name }} @ `${{ github.sha }}`)\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>${{ steps.meta.outputs.linear_suffix }}${{ steps.meta.outputs.host_suffix_dev }}"
+
+      - name: Notify Slack (staging)
+        if: ${{ inputs.verified-staging == 'true' }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.slack-bot-token }}
+          payload: |
+            channel: "#ci-cd"
+            text: "Deployed *${{ github.repository }}* to *staging* (${{ github.ref_name }} @ `${{ github.sha }}`)\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>${{ steps.meta.outputs.linear_suffix }}${{ steps.meta.outputs.host_suffix_staging }}"
+
+      - name: Notify Slack (prod)
+        if: ${{ inputs.verified-prod == 'true' }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.slack-bot-token }}
+          payload: |
+            channel: "#ci-cd"
+            text: "Deployed *${{ github.repository }}* to *prod* (${{ github.ref_name }} @ `${{ github.sha }}`)\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>${{ steps.meta.outputs.linear_suffix }}${{ steps.meta.outputs.host_suffix_prod }}"

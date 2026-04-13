@@ -1,0 +1,115 @@
+name: Verify deploy
+on:
+  workflow_call:
+    outputs:
+      verified-dev:
+        description: "'true' when dev health matched the expected SHA"
+        value: ${{ jobs.verify.outputs.verified_dev }}
+      verified-staging:
+        description: "'true' when staging health matched the expected SHA"
+        value: ${{ jobs.verify.outputs.verified_staging }}
+      verified-prod:
+        description: "'true' when prod health matched the expected SHA"
+        value: ${{ jobs.verify.outputs.verified_prod }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      verified_dev: ${{ steps.verify.outputs.verified_dev }}
+      verified_staging: ${{ steps.verify.outputs.verified_staging }}
+      verified_prod: ${{ steps.verify.outputs.verified_prod }}
+    steps:
+      - name: Wait for /health per environment
+        id: verify
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          WD_ENV: ${{ github.event.inputs.environment }}
+        run: |
+          set -euo pipefail
+          APP_NAME="${GITHUB_REPOSITORY#*/}"
+          APP_NAME="${APP_NAME#brijyt-}"
+
+          branch_push_non_tag() {
+            [[ "${EVENT_NAME}" == "push" ]] || return 1
+            [[ "${REF}" == "refs/heads/main" ]] && return 0
+            [[ "${REF}" == refs/heads/feature/* ]] && return 0
+            [[ "${REF}" == refs/heads/fix/* ]] && return 0
+            return 1
+          }
+
+          should_verify_dev() {
+            branch_push_non_tag && return 0
+            [[ "${EVENT_NAME}" == "pull_request" ]] && return 0
+            [[ "${EVENT_NAME}" == "workflow_dispatch" && "${WD_ENV:-}" == "dev" ]] && return 0
+            return 1
+          }
+
+          should_verify_staging() {
+            branch_push_non_tag && return 0
+            [[ "${EVENT_NAME}" == "workflow_dispatch" && "${WD_ENV:-}" == "staging" ]] && return 0
+            return 1
+          }
+
+          should_verify_prod() {
+            [[ "${EVENT_NAME}" == "push" && "${REF}" =~ ^refs/tags/v ]] && return 0
+            [[ "${EVENT_NAME}" == "workflow_dispatch" && "${WD_ENV:-}" == "prod" ]] && return 0
+            return 1
+          }
+
+          verify_one() {
+            local dep_env="$1"
+            local verify_url="https://${APP_NAME}-${dep_env}.brijyt.ai"
+            echo "Checking ${verify_url}/health for buildNumber == ${EXPECTED_SHA}"
+            local i
+            for i in $(seq 1 30); do
+              local body
+              if body="$(curl -fsS --max-time 30 -H 'Accept: application/json' "${verify_url}/health" 2>/dev/null)"; then
+                if echo "$body" | jq -e --arg sha "$EXPECTED_SHA" '.buildNumber == $sha' >/dev/null 2>&1; then
+                  echo "Match on ${dep_env} attempt ${i}"
+                  return 0
+                fi
+                echo "Attempt ${i} (${dep_env}): health OK but buildNumber mismatch: $(echo "$body" | jq -c '{buildNumber,testedSha}' 2>/dev/null || true)"
+              else
+                echo "Attempt ${i} (${dep_env}): request failed or non-2xx"
+              fi
+              sleep 10
+            done
+            echo "Timed out waiting for deployed revision (${dep_env})"
+            return 1
+          }
+
+          verified_dev=false
+          verified_staging=false
+          verified_prod=false
+
+          if should_verify_dev; then
+            verify_one dev
+            verified_dev=true
+          else
+            echo "Skip verify dev (not deployed for this event)"
+          fi
+
+          if should_verify_staging; then
+            verify_one staging
+            verified_staging=true
+          else
+            echo "Skip verify staging (not deployed for this event)"
+          fi
+
+          if should_verify_prod; then
+            verify_one prod
+            verified_prod=true
+          else
+            echo "Skip verify prod (not deployed for this event)"
+          fi
+
+          {
+            echo "verified_dev=${verified_dev}"
+            echo "verified_staging=${verified_staging}"
+            echo "verified_prod=${verified_prod}"
+          } >> "${GITHUB_OUTPUT}"
