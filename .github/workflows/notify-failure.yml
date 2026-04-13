@@ -8,6 +8,9 @@ on:
 jobs:
   notify:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
     steps:
       - name: Resolve Linear ticket link suffix
         id: meta
@@ -42,11 +45,64 @@ jobs:
           fi
           printf 'linear_suffix=%s\n' "${LINEAR_SUFFIX}" >> "${GITHUB_OUTPUT}"
 
+      - name: List failed jobs (GitHub API)
+        id: failures
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          : > fail-summary.txt
+          if ! gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100" -o jobs.json 2>/dev/null; then
+            echo "_Could not load jobs (caller workflow may need \`permissions: actions: read\`)._" > fail-summary.txt
+            exit 0
+          fi
+          jq -r '
+            [.jobs[]
+              | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "startup_failure")
+              | (
+                  ("• *" + .name + "* — `" + .conclusion + "`") as $head
+                  | ((.steps // []) | map(select(.conclusion == "failure")) | .[0].name? // "") as $step
+                  | $head
+                    + (if $step != "" then " — failed step: `" + $step + "`" else "" end)
+                    + " <" + .html_url + "|open job>"
+                )
+            ]
+            | if length == 0 then
+                "_No job with failure/timed_out/startup_failure in API response (see run)._"
+              else
+                join("\n")
+              end
+          ' jobs.json > fail-summary.txt
+
+      - name: Build Slack payload
+        shell: bash
+        env:
+          LINEAR_SUFFIX: ${{ steps.meta.outputs.linear_suffix }}
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg ch "#ci-cd" \
+            --arg repo "${{ github.repository }}" \
+            --arg ref "${{ github.ref_name }}" \
+            --arg sha "${{ github.sha }}" \
+            --arg run_url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --arg linear_suffix "${LINEAR_SUFFIX}" \
+            --rawfile fails fail-summary.txt \
+            '{
+              channel: $ch,
+              text: (
+                "Pipeline failed for *\($repo)* (\($ref) @ `\($sha)`)\n"
+                + "<\($run_url)|View run>"
+                + $linear_suffix
+                + "\n\n*Failed jobs*\n"
+                + ($fails | rtrimstr("\n"))
+              )
+            }' > slack-payload.json
+
       - name: Notify Slack (pipeline failure)
         uses: slackapi/slack-github-action@v3.0.1
         with:
           method: chat.postMessage
           token: ${{ secrets.slack-bot-token }}
-          payload: |
-            channel: "#ci-cd"
-            text: "Pipeline failed for *${{ github.repository }}* (${{ github.ref_name }} @ `${{ github.sha }}`)\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>${{ steps.meta.outputs.linear_suffix }}"
+          payload-file-path: slack-payload.json

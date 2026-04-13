@@ -33,6 +33,8 @@ This repo also contains **Node scripts** under `scripts/` (Linear release milest
 
 **Post-deploy workflows:** `verify-deploy` polls `https://{app}-{env}.brijyt.ai/health` until the deployed SHA matches `github.sha`. `notify-deploy` and `notify-failure` use `slackapi/slack-github-action` to post to `#ci-cd`. Both resolve the Linear ticket from the branch name, commit message, or PR title automatically. The caller is responsible for `needs`/`if` conditions (especially `notify-failure`, which must list all upstream jobs).
 
+**`notify-failure` details:** the reusable job requests `actions: read` and calls the GitHub API to list jobs in the current run, then Slack includes failed job names, `conclusion`, the first failed step name (when the API exposes it), and a link to the job. The **caller** workflow must include `permissions: actions: read` (alongside `contents: read` or broader) so the token can read run jobs; log bodies are not returned by the API—open the job link for full logs.
+
 For the build/push workflows (node-build-push-docker, python-build-push-docker, scala-build-docker, push-docker-image), **image-name** is optional. When omitted, the image name is derived from the repository name (without the `brijyt-` prefix), e.g. `brijyt-agentic-reply-api` → `agentic-reply-api`. Pass **image-name** to override (e.g. `brijyt-docs` using `image-name: likec4-doc`).
 
 ## Versioning
