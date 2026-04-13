@@ -2,6 +2,8 @@
 
 Shared reusable GitHub Actions workflows and the **scaleway-secrets** composite action for brijyt-*-web and brijyt-*-api projects.
 
+This repo also contains **Node scripts** under `scripts/` (Linear release milestone + post-deploy status) and a root `package.json` used by those workflows (`npm ci` in CI).
+
 ## Contents
 
 - **Reusable workflows** (`.github/workflows/`): call from project repos with `uses: brijyt/brijyt-github-ci/.github/workflows/<name>.yml@<ref>`.
@@ -21,6 +23,10 @@ Shared reusable GitHub Actions workflows and the **scaleway-secrets** composite 
 | [push-docker-image](.github/workflows/push-docker-image.yml) | registry, image-name?, artifact-name | image-ref | scw-secret-key |
 | [pact-publish](.github/workflows/pact-publish.yml) | artifact-name, pacts-source (pacts-dir \| target-dir) | - | PACT_BROKER_PASSWORD (vars: PACT_BROKER_*) |
 | [pr-validation-scala](.github/workflows/pr-validation-scala.yml) | java-version? | - | - |
+| [linear-release-milestone](.github/workflows/linear-release-milestone.yml) | tag-name | - | linear-api-key |
+| [linear-mark-deployed](.github/workflows/linear-mark-deployed.yml) | tag-name | - | linear-api-key |
+
+**Linear workflows:** they check out this repository to run `scripts/linear-release-milestone.mjs` or `scripts/linear-mark-deployed.mjs` with `@linear/sdk`. Pass **`linear-api-key`** (typically `${{ secrets.LINEAR_API_KEY }}`). `GITHUB_REPOSITORY` and `GITHUB_TOKEN` (release milestone only) come from the **caller** workflow. The Linear project name is derived from the repo name (`brijyt-chat-web` → `chat-web`).
 
 For the build/push workflows (node-build-push-docker, python-build-push-docker, scala-build-docker, push-docker-image), **image-name** is optional. When omitted, the image name is derived from the repository name (without the `brijyt-` prefix), e.g. `brijyt-agentic-reply-api` → `agentic-reply-api`. Pass **image-name** to override (e.g. `brijyt-docs` using `image-name: likec4-doc`).
 

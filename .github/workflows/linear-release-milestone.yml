@@ -1,0 +1,40 @@
+name: Linear release milestone
+on:
+  workflow_call:
+    inputs:
+      tag-name:
+        description: "Release tag (e.g. v1.5.2)"
+        required: true
+        type: string
+    secrets:
+      linear-api-key:
+        required: true
+
+jobs:
+  linear_milestone:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: brijyt/brijyt-github-ci
+          ref: main
+          path: .ci
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: .ci/package-lock.json
+
+      - run: npm ci
+        working-directory: .ci
+
+      - name: Create Linear project milestone and link tickets
+        env:
+          LINEAR_API_KEY: ${{ secrets.linear-api-key }}
+          TAG_NAME: ${{ inputs.tag-name }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node .ci/scripts/linear-release-milestone.mjs
