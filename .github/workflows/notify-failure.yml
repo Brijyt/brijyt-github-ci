@@ -1,6 +1,11 @@
 name: Notify failure
 on:
   workflow_call:
+    inputs:
+      needs-json:
+        description: "Pass the caller's toJSON(needs) so failed jobs are listed without the Actions API (recommended)."
+        required: false
+        type: string
     secrets:
       slack-bot-token:
         required: true
@@ -45,35 +50,59 @@ jobs:
           fi
           printf 'linear_suffix=%s\n' "${LINEAR_SUFFIX}" >> "${GITHUB_OUTPUT}"
 
-      - name: List failed jobs (GitHub API)
+      - name: List failed jobs
         id: failures
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          NEEDS_JSON: ${{ inputs.needs-json }}
         run: |
           set -euo pipefail
           : > fail-summary.txt
-          if ! gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100" -o jobs.json 2>/dev/null; then
-            echo "_Could not load jobs (caller workflow may need \`permissions: actions: read\`)._" > fail-summary.txt
+
+          summarize_from_needs() {
+            [[ -n "${NEEDS_JSON:-}" ]] || return 1
+            echo "${NEEDS_JSON}" | jq -e 'type == "object"' >/dev/null 2>&1 || return 1
+            echo "${NEEDS_JSON}" | jq -r '
+              to_entries[]
+              | select(.value.result == "failure")
+              | ("• *" + .key + "* — `" + .value.result + "`")
+            ' > fail-summary.txt
+            [[ -s fail-summary.txt ]]
+          }
+
+          summarize_from_api() {
+            gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100" -o jobs.json 2>/dev/null || return 1
+            jq -e '.jobs | length > 0' jobs.json >/dev/null 2>&1 || return 1
+            jq -r '
+              [.jobs[]
+                | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "startup_failure")
+                | (
+                    ("• *" + .name + "* — `" + .conclusion + "`") as $head
+                    | ((.steps // []) | map(select(.conclusion == "failure")) | .[0].name? // "") as $step
+                    | $head
+                      + (if $step != "" then " — failed step: `" + $step + "`" else "" end)
+                      + " <" + .html_url + "|open job>"
+                  )
+              ]
+              | if length == 0 then
+                  "_No job with failure/timed_out/startup_failure in API response (see run)._"
+                else
+                  join("\n")
+                end
+            ' jobs.json > fail-summary.txt
+          }
+
+          if summarize_from_api; then
             exit 0
           fi
-          jq -r '
-            [.jobs[]
-              | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "startup_failure")
-              | (
-                  ("• *" + .name + "* — `" + .conclusion + "`") as $head
-                  | ((.steps // []) | map(select(.conclusion == "failure")) | .[0].name? // "") as $step
-                  | $head
-                    + (if $step != "" then " — failed step: `" + $step + "`" else "" end)
-                    + " <" + .html_url + "|open job>"
-                )
-            ]
-            | if length == 0 then
-                "_No job with failure/timed_out/startup_failure in API response (see run)._"
-              else
-                join("\n")
-              end
-          ' jobs.json > fail-summary.txt
+          if summarize_from_needs; then
+            exit 0
+          fi
+          {
+            echo "_Could not list jobs via the Actions API and no needs-json input was passed._"
+            echo "From the caller notify_failure job, pass input needs-json with toJSON(needs) (see brijyt-github-ci README). Optional: permissions actions: read on the caller for API step details."
+          } > fail-summary.txt
 
       - name: Build Slack payload
         shell: bash

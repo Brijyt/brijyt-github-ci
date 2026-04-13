@@ -27,13 +27,13 @@ This repo also contains **Node scripts** under `scripts/` (Linear release milest
 | [linear-mark-deployed](.github/workflows/linear-mark-deployed.yml) | tag-name | - | linear-api-key |
 | [verify-deploy](.github/workflows/verify-deploy.yml) | - | verified-dev, verified-staging, verified-prod | - |
 | [notify-deploy](.github/workflows/notify-deploy.yml) | verified-dev?, verified-staging?, verified-prod? | - | slack-bot-token |
-| [notify-failure](.github/workflows/notify-failure.yml) | - | - | slack-bot-token |
+| [notify-failure](.github/workflows/notify-failure.yml) | needs-json (optional, pass caller `toJSON(needs)`) | - | slack-bot-token |
 
 **Linear workflows:** they check out this repository to run `scripts/linear-release-milestone.mjs` or `scripts/linear-mark-deployed.mjs` with `@linear/sdk`. Pass **`linear-api-key`** (typically `${{ secrets.LINEAR_API_KEY }}`). `GITHUB_REPOSITORY` and `GITHUB_TOKEN` (release milestone only) come from the **caller** workflow. The Linear project name is derived from the repo name (`brijyt-chat-web` → `chat-web`). For `actions/checkout` of this repo from another workflow, **`brijyt-github-ci` must be public** (or the caller must otherwise have read access); the caller’s default `GITHUB_TOKEN` only has access to the caller repository.
 
 **Post-deploy workflows:** `verify-deploy` polls `https://{app}-{env}.brijyt.ai/health` until the deployed SHA matches `github.sha`. `notify-deploy` and `notify-failure` use `slackapi/slack-github-action` to post to `#ci-cd`. Both resolve the Linear ticket from the branch name, commit message, or PR title automatically. The caller is responsible for `needs`/`if` conditions (especially `notify-failure`, which must list all upstream jobs).
 
-**`notify-failure` details:** the reusable job requests `actions: read` and calls the GitHub API to list jobs in the current run, then Slack includes failed job names, `conclusion`, the first failed step name (when the API exposes it), and a link to the job. The **caller** workflow must include `permissions: actions: read` (alongside `contents: read` or broader) so the token can read run jobs; log bodies are not returned by the API—open the job link for full logs.
+**`notify-failure` details:** pass **`needs-json: ${{ toJSON(needs) }}`** from the caller job so Slack always lists **caller** jobs whose `result` is `failure` (works without the Actions API). The workflow still tries the GitHub API when possible (`permissions: actions: read` on the **caller** workflow) to add nested job names, failed steps, and job links. Log bodies are never in the API—open the run or job link for full logs.
 
 For the build/push workflows (node-build-push-docker, python-build-push-docker, scala-build-docker, push-docker-image), **image-name** is optional. When omitted, the image name is derived from the repository name (without the `brijyt-` prefix), e.g. `brijyt-agentic-reply-api` → `agentic-reply-api`. Pass **image-name** to override (e.g. `brijyt-docs` using `image-name: likec4-doc`).
 
