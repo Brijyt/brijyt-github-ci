@@ -23,13 +23,15 @@ This repo also contains **Node scripts** under `scripts/` (Linear release milest
 | [push-docker-image](.github/workflows/push-docker-image.yml) | registry, image-name?, artifact-name | image-ref | scw-secret-key |
 | [pact-publish](.github/workflows/pact-publish.yml) | artifact-name, pacts-source (pacts-dir \| target-dir) | - | PACT_BROKER_PASSWORD (vars: PACT_BROKER_*) |
 | [pr-validation-scala](.github/workflows/pr-validation-scala.yml) | java-version? | - | - |
-| [linear-release-milestone](.github/workflows/linear-release-milestone.yml) | tag-name | - | linear-api-key |
-| [linear-mark-deployed](.github/workflows/linear-mark-deployed.yml) | tag-name | - | linear-api-key |
+| [linear-release-milestone](.github/workflows/linear-release-milestone.yml) | tag-name | - | linear-api-key, github-ci-checkout-token? |
+| [linear-mark-deployed](.github/workflows/linear-mark-deployed.yml) | tag-name | - | linear-api-key, github-ci-checkout-token? |
 | [verify-deploy](.github/workflows/verify-deploy.yml) | - | verified-dev, verified-staging, verified-prod | - |
 | [notify-deploy](.github/workflows/notify-deploy.yml) | verified-dev?, verified-staging?, verified-prod? | - | slack-bot-token |
 | [notify-failure](.github/workflows/notify-failure.yml) | - | - | slack-bot-token |
 
 **Linear workflows:** they check out this repository to run `scripts/linear-release-milestone.mjs` or `scripts/linear-mark-deployed.mjs` with `@linear/sdk`. Pass **`linear-api-key`** (typically `${{ secrets.LINEAR_API_KEY }}`). `GITHUB_REPOSITORY` and `GITHUB_TOKEN` (release milestone only) come from the **caller** workflow. The Linear project name is derived from the repo name (`brijyt-chat-web` → `chat-web`).
+
+Because `brijyt-github-ci` is often **private or internal**, the default `GITHUB_TOKEN` of the **caller** repo cannot clone it. Pass optional secret **`github-ci-checkout-token`** from a PAT (or GitHub App token) with **`contents: read`** on `brijyt/brijyt-github-ci`. If omitted, checkout uses `github.token` (works only when this repo is public to the token). Example caller mapping: `github-ci-checkout-token: ${{ secrets.BRIJYT_GITHUB_CI_CHECKOUT_TOKEN }}`.
 
 **Post-deploy workflows:** `verify-deploy` polls `https://{app}-{env}.brijyt.ai/health` until the deployed SHA matches `github.sha`. `notify-deploy` and `notify-failure` use `slackapi/slack-github-action` to post to `#ci-cd`. Both resolve the Linear ticket from the branch name, commit message, or PR title automatically. The caller is responsible for `needs`/`if` conditions (especially `notify-failure`, which must list all upstream jobs).
 

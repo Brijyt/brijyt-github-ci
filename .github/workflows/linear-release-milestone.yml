@@ -9,6 +9,9 @@ on:
     secrets:
       linear-api-key:
         required: true
+      # Fine-grained or classic PAT with contents:read on brijyt-github-ci (required when that repo is private/internal).
+      github-ci-checkout-token:
+        required: false
 
 jobs:
   linear_milestone:
@@ -21,6 +24,7 @@ jobs:
           repository: brijyt/brijyt-github-ci
           ref: main
           path: .ci
+          token: ${{ secrets.github-ci-checkout-token || github.token }}
 
       - uses: actions/setup-node@v4
         with:
