@@ -71,16 +71,16 @@ jobs:
           verify_one() {
             local dep_env="$1"
             local verify_url="https://${APP_NAME}-${dep_env}.${BASE_DOMAIN}"
-            echo "Checking ${verify_url}/health for buildNumber == ${EXPECTED_SHA}"
+            echo "Checking ${verify_url}/health for testedSha == ${EXPECTED_SHA}"
             local i
             for i in $(seq 1 30); do
               local body
               if body="$(curl -fsS --max-time 30 -H 'Accept: application/json' "${verify_url}/health" 2>/dev/null)"; then
-                if echo "$body" | jq -e --arg sha "$EXPECTED_SHA" '.buildNumber == $sha' >/dev/null 2>&1; then
+                if echo "$body" | jq -e --arg sha "$EXPECTED_SHA" '.testedSha == $sha' >/dev/null 2>&1; then
                   echo "Match on ${dep_env} attempt ${i}"
                   return 0
                 fi
-                echo "Attempt ${i} (${dep_env}): health OK but buildNumber mismatch: $(echo "$body" | jq -c '{buildNumber,testedSha}' 2>/dev/null || true)"
+                echo "Attempt ${i} (${dep_env}): health OK but testedSha mismatch: $(echo "$body" | jq -c '{buildNumber,testedSha}' 2>/dev/null || true)"
               else
                 echo "Attempt ${i} (${dep_env}): request failed or non-2xx"
               fi
