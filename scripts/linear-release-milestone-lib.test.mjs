@@ -3,6 +3,7 @@ import {
   collectUniqueTickets,
   extractBriTicketIdsFromText,
   extractCompareRangeFromReleaseBody,
+  findMilestoneIdByExactName,
   isLikelyIssueUuid,
   linearProjectNameFromGithubRepo,
   parseTeamKeyAndNumber,
@@ -64,5 +65,19 @@ describe("isLikelyIssueUuid", () => {
 
   it("rejects ticket id", () => {
     expect(isLikelyIssueUuid("BRI-44")).toBe(false);
+  });
+});
+
+describe("findMilestoneIdByExactName", () => {
+  it("returns id when name matches", () => {
+    const nodes = [
+      { id: "m1", name: "v1.16.0" },
+      { id: "m2", name: "v1.17.0" },
+    ];
+    expect(findMilestoneIdByExactName(nodes, "v1.17.0")).toBe("m2");
+  });
+
+  it("returns empty string when no match", () => {
+    expect(findMilestoneIdByExactName([{ id: "m1", name: "v1.16.0" }], "v9.0.0")).toBe("");
   });
 });

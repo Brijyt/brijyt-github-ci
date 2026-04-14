@@ -62,3 +62,59 @@ export function parseTeamKeyAndNumber(ticket) {
 export function isLikelyIssueUuid(ticket) {
   return UUID_RE.test(ticket);
 }
+
+/**
+ * @param {Array<{ id: string; name: string }>} nodes from projectMilestones connection
+ * @param {string} name exact tag e.g. v1.17.0
+ * @returns {string} milestone id or ""
+ */
+export function findMilestoneIdByExactName(nodes, name) {
+  const hit = nodes.find((m) => m.name === name);
+  return hit?.id ?? "";
+}
+
+/**
+ * @param {LinearClient} client
+ * @param {string} projectId
+ * @param {string} name milestone name (usually the release tag)
+ * @returns {Promise<string>} Linear project milestone id
+ */
+export async function findOrCreateProjectMilestone(client, projectId, name) {
+  const project = await client.project(projectId);
+
+  const listAndMatch = async () => {
+    const conn = await project.projectMilestones({ first: 100 });
+    return findMilestoneIdByExactName(conn.nodes, name);
+  };
+
+  const existingId = await listAndMatch();
+  if (existingId) {
+    console.log(`Reusing existing Linear milestone '${name}' (${existingId})`);
+    return existingId;
+  }
+
+  try {
+    const payload = await client.createProjectMilestone({ projectId, name });
+    const milestoneId = payload.projectMilestoneId;
+    if (payload.success && milestoneId) {
+      console.log(`Created Linear milestone '${name}' (${milestoneId})`);
+      return milestoneId;
+    }
+    throw new Error(
+      `Linear createProjectMilestone failed: success=${payload.success} projectMilestoneId=${milestoneId}`,
+    );
+  } catch (e) {
+    const errors = e?.response?.errors ?? e?.raw?.response?.errors ?? [];
+    const first = errors[0];
+    const presentable = first?.userPresentableMessage ?? "";
+    const combined = `${e?.message ?? e} ${first?.message ?? ""} ${presentable}`;
+    if (/name not unique|already exists/i.test(combined)) {
+      const after = await listAndMatch();
+      if (after) {
+        console.log(`Reusing Linear milestone '${name}' after duplicate create (${after})`);
+        return after;
+      }
+    }
+    throw e;
+  }
+}

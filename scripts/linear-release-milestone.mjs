@@ -11,6 +11,7 @@ import {
   collectUniqueTickets,
   extractCompareRangeFromReleaseBody,
   findLinearProjectIdByName,
+  findOrCreateProjectMilestone,
   isLikelyIssueUuid,
   linearProjectNameFromGithubRepo,
   parseTeamKeyAndNumber,
@@ -141,19 +142,7 @@ async function main() {
   const projectId = await findLinearProjectIdByName(client, projectName);
   console.log(`Resolved project '${projectName}' -> ${projectId}`);
 
-  const milestonePayload = await client.createProjectMilestone({
-    projectId,
-    name: tagName,
-  });
-  const milestoneId = milestonePayload.projectMilestoneId;
-  if (!milestonePayload.success || !milestoneId) {
-    console.error("Linear createProjectMilestone failed:", {
-      success: milestonePayload.success,
-      projectMilestoneId: milestoneId,
-    });
-    process.exit(1);
-  }
-  console.log(`Created milestone: ${tagName} (${milestoneId})`);
+  const milestoneId = await findOrCreateProjectMilestone(client, projectId, tagName);
 
   for (const ticket of tickets) {
     const issueId = await resolveIssueUuid(client, ticket);
