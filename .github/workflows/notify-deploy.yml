@@ -64,6 +64,10 @@ jobs:
               printf 'host_suffix_dev=%s\n' " | <https://${APP_NAME}-dev.brijyt.ai|Open dev>"
               printf 'host_suffix_staging=%s\n' " | <https://${APP_NAME}-staging.brijyt.ai|Open staging>"
               printf 'host_suffix_prod=%s\n' " | <https://${APP_NAME}-prod.brijyt.ai|Open prod>"
+            elif [[ "${REPO}" == *-api ]]; then
+              printf 'host_suffix_dev=%s\n' " | <https://${APP_NAME}-dev.brijyt.io|Open dev>"
+              printf 'host_suffix_staging=%s\n' " | <https://${APP_NAME}-staging.brijyt.io|Open staging>"
+              printf 'host_suffix_prod=%s\n' " | <https://${APP_NAME}-prod.brijyt.io|Open prod>"
             else
               printf 'host_suffix_dev=%s\n' ""
               printf 'host_suffix_staging=%s\n' ""

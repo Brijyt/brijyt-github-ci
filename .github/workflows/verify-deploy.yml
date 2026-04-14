@@ -31,8 +31,15 @@ jobs:
           WD_ENV: ${{ github.event.inputs.environment }}
         run: |
           set -euo pipefail
-          APP_NAME="${GITHUB_REPOSITORY#*/}"
-          APP_NAME="${APP_NAME#brijyt-}"
+          REPO_SHORT="${GITHUB_REPOSITORY#*/}"
+          APP_NAME="${REPO_SHORT#brijyt-}"
+          # Web apps: *.brijyt.ai — API apps: *.brijyt.io (match repo name after brijyt- prefix)
+          if [[ "${REPO_SHORT}" == *-api ]]; then
+            BASE_DOMAIN="brijyt.io"
+          else
+            BASE_DOMAIN="brijyt.ai"
+          fi
+          echo "Verify /health on *.${BASE_DOMAIN} (repo ${REPO_SHORT})"
 
           branch_push_non_tag() {
             [[ "${EVENT_NAME}" == "push" ]] || return 1
@@ -63,7 +70,7 @@ jobs:
 
           verify_one() {
             local dep_env="$1"
-            local verify_url="https://${APP_NAME}-${dep_env}.brijyt.ai"
+            local verify_url="https://${APP_NAME}-${dep_env}.${BASE_DOMAIN}"
             echo "Checking ${verify_url}/health for buildNumber == ${EXPECTED_SHA}"
             local i
             for i in $(seq 1 30); do
