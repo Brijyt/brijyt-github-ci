@@ -63,7 +63,9 @@ jobs:
           }
 
           should_verify_prod() {
+            # Tag push (legacy) or main merge: prod is deployed in the same pipeline as dev/staging.
             [[ "${EVENT_NAME}" == "push" && "${REF}" =~ ^refs/tags/v ]] && return 0
+            [[ "${EVENT_NAME}" == "push" && "${REF}" == "refs/heads/main" ]] && return 0
             [[ "${EVENT_NAME}" == "workflow_dispatch" && "${WD_ENV:-}" == "prod" ]] && return 0
             return 1
           }
