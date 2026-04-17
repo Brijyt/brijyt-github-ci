@@ -1,6 +1,25 @@
 name: Verify deploy
 on:
   workflow_call:
+    inputs:
+      health-slugs-json:
+        description: >
+          Optional JSON array of URL slugs (strings). For each active environment (dev, staging, prod), probes
+          https://{slug}-api-{env}.{brijyt.ai|brijyt.io}/health for every slug (domain follows the same *-api rule as default).
+          Example: ["embedding-pdf","embedding-generic"] → embedding-pdf-api-dev.brijyt.io, etc. When non-empty, takes
+          precedence over health-urls-json.
+        required: false
+        type: string
+        default: ""
+      health-urls-json:
+        description: >
+          Optional JSON map of environment keys to arrays of base URLs (https host, optional path).
+          Keys: dev, staging, prod. Example: {"dev":["https://svc-a-dev.example.io","https://svc-b-dev.example.io"]}.
+          Each base gets /health appended unless the URL already ends with /health. When empty, URLs default to
+          https://{app}-{env}.{brijyt.ai|brijyt.io} from the repository name (same as before). Ignored when health-slugs-json is set.
+        required: false
+        type: string
+        default: ""
     outputs:
       verified-dev:
         description: "'true' when dev health matched the expected SHA"
@@ -29,6 +48,8 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           REF: ${{ github.ref }}
           WD_ENV: ${{ github.event.inputs.environment }}
+          HEALTH_SLUGS_JSON: ${{ inputs.health-slugs-json }}
+          HEALTH_URLS_JSON: ${{ inputs.health-urls-json }}
         run: |
           set -euo pipefail
           REPO_SHORT="${GITHUB_REPOSITORY#*/}"
@@ -40,6 +61,76 @@ jobs:
             BASE_DOMAIN="brijyt.ai"
           fi
           echo "Verify /health on *.${BASE_DOMAIN} (repo ${REPO_SHORT})"
+
+          if [[ -n "${HEALTH_SLUGS_JSON// }" ]]; then
+            echo "$HEALTH_SLUGS_JSON" | jq -e 'type == "array" and length > 0' >/dev/null || {
+              echo "::error::health-slugs-json must be a non-empty JSON array"
+              exit 1
+            }
+            echo "Using caller health-slugs-json (https://{slug}-api-{env}.${BASE_DOMAIN}/health)"
+          elif [[ -n "${HEALTH_URLS_JSON// }" ]]; then
+            echo "$HEALTH_URLS_JSON" | jq -e . >/dev/null || {
+              echo "::error::health-urls-json is not valid JSON"
+              exit 1
+            }
+            echo "Using caller health-urls-json override"
+          fi
+
+          to_health_url() {
+            local base="$1"
+            base="${base%/}"
+            if [[ "$base" == */health ]]; then
+              echo "$base"
+            else
+              echo "${base}/health"
+            fi
+          }
+
+          verify_health_endpoint() {
+            local label="$1"
+            local health_url="$2"
+            echo "Checking ${health_url} (${label}) for testedSha == ${EXPECTED_SHA}"
+            local i
+            for i in $(seq 1 30); do
+              local body
+              if body="$(curl -fsS --max-time 30 -H 'Accept: application/json' "${health_url}" 2>/dev/null)"; then
+                if echo "$body" | jq -e --arg sha "$EXPECTED_SHA" '.testedSha == $sha' >/dev/null 2>&1; then
+                  echo "Match on ${label} attempt ${i}"
+                  return 0
+                fi
+                echo "Attempt ${i} (${label}): health OK but testedSha mismatch: $(echo "$body" | jq -c '{buildNumber,testedSha}' 2>/dev/null || true)"
+              else
+                echo "Attempt ${i} (${label}): request failed or non-2xx"
+              fi
+              sleep 10
+            done
+            echo "Timed out waiting for deployed revision (${label})"
+            return 1
+          }
+
+          verify_env_urls() {
+            local env_key="$1"
+            if [[ -n "${HEALTH_SLUGS_JSON// }" ]]; then
+              local slug
+              while IFS= read -r slug; do
+                [[ -z "${slug}" ]] && continue
+                local base="https://${slug}-api-${env_key}.${BASE_DOMAIN}"
+                verify_health_endpoint "${env_key}[${slug}]" "$(to_health_url "${base}")" || return 1
+              done < <(echo "$HEALTH_SLUGS_JSON" | jq -r '.[]')
+              return 0
+            fi
+            if [[ -n "${HEALTH_URLS_JSON// }" ]] && echo "$HEALTH_URLS_JSON" | jq -e --arg e "$env_key" '(.[$e] | type == "array") and (.[$e] | length > 0)' >/dev/null 2>&1; then
+              local idx=0
+              local base
+              while IFS= read -r base; do
+                [[ -z "${base}" ]] && continue
+                idx=$((idx + 1))
+                verify_health_endpoint "${env_key}[${idx}]" "$(to_health_url "${base}")" || return 1
+              done < <(echo "$HEALTH_URLS_JSON" | jq -r --arg e "$env_key" '.[$e][]? // empty')
+              return 0
+            fi
+            verify_health_endpoint "${env_key}" "$(to_health_url "https://${APP_NAME}-${env_key}.${BASE_DOMAIN}")" || return 1
+          }
 
           branch_push_non_tag() {
             [[ "${EVENT_NAME}" == "push" ]] || return 1
@@ -70,48 +161,26 @@ jobs:
             return 1
           }
 
-          verify_one() {
-            local dep_env="$1"
-            local verify_url="https://${APP_NAME}-${dep_env}.${BASE_DOMAIN}"
-            echo "Checking ${verify_url}/health for testedSha == ${EXPECTED_SHA}"
-            local i
-            for i in $(seq 1 30); do
-              local body
-              if body="$(curl -fsS --max-time 30 -H 'Accept: application/json' "${verify_url}/health" 2>/dev/null)"; then
-                if echo "$body" | jq -e --arg sha "$EXPECTED_SHA" '.testedSha == $sha' >/dev/null 2>&1; then
-                  echo "Match on ${dep_env} attempt ${i}"
-                  return 0
-                fi
-                echo "Attempt ${i} (${dep_env}): health OK but testedSha mismatch: $(echo "$body" | jq -c '{buildNumber,testedSha}' 2>/dev/null || true)"
-              else
-                echo "Attempt ${i} (${dep_env}): request failed or non-2xx"
-              fi
-              sleep 10
-            done
-            echo "Timed out waiting for deployed revision (${dep_env})"
-            return 1
-          }
-
           verified_dev=false
           verified_staging=false
           verified_prod=false
 
           if should_verify_dev; then
-            verify_one dev
+            verify_env_urls dev
             verified_dev=true
           else
             echo "Skip verify dev (not deployed for this event)"
           fi
 
           if should_verify_staging; then
-            verify_one staging
+            verify_env_urls staging
             verified_staging=true
           else
             echo "Skip verify staging (not deployed for this event)"
           fi
 
           if should_verify_prod; then
-            verify_one prod
+            verify_env_urls prod
             verified_prod=true
           else
             echo "Skip verify prod (not deployed for this event)"
