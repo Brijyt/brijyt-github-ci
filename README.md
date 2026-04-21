@@ -21,6 +21,7 @@ This repo also contains **Node scripts** under `scripts/` (Linear release milest
 | [scala-test](.github/workflows/scala-test.yml) | - | artifact-name | PACT_BROKER_PASSWORD (vars: PACT_BROKER_*) |
 | [scala-build-docker](.github/workflows/scala-build-docker.yml) | registry, image-name? | artifact-name, local-image | - |
 | [push-docker-image](.github/workflows/push-docker-image.yml) | registry, image-name?, artifact-name | image-ref | scw-secret-key |
+| [release-tag-name](.github/workflows/release-tag-name.yml) | bump-file, version-source (`node-package-json` or `plain-semver-file`, string) | tag | - |
 | [pact-publish](.github/workflows/pact-publish.yml) | artifact-name, pacts-source (pacts-dir \| target-dir) | - | PACT_BROKER_PASSWORD (vars: PACT_BROKER_*) |
 | [pr-validation-scala](.github/workflows/pr-validation-scala.yml) | java-version? | - | - |
 | [linear-release-milestone](.github/workflows/linear-release-milestone.yml) | tag-name | - | linear-api-key |
