@@ -47,6 +47,7 @@ jobs:
           EXPECTED_SHA: ${{ github.sha }}
           EVENT_NAME: ${{ github.event_name }}
           REF: ${{ github.ref }}
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
           WD_ENV: ${{ github.event.inputs.environment }}
           HEALTH_SLUGS_JSON: ${{ inputs.health-slugs-json }}
           HEALTH_URLS_JSON: ${{ inputs.health-urls-json }}
@@ -142,21 +143,26 @@ jobs:
 
           should_verify_dev() {
             branch_push_non_tag && return 0
-            [[ "${EVENT_NAME}" == "pull_request" ]] && return 0
+            if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+              [[ "${GITHUB_HEAD_REF:-}" != release-please--* ]] && return 0
+            fi
             [[ "${EVENT_NAME}" == "workflow_dispatch" && "${WD_ENV:-}" == "dev" ]] && return 0
             return 1
           }
 
           should_verify_staging() {
             branch_push_non_tag && return 0
+            [[ "${EVENT_NAME}" == "push" && "${REF}" =~ ^refs/tags/v ]] && return 0
+            if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+              [[ "${GITHUB_HEAD_REF:-}" == release-please--* ]] && return 0
+            fi
             [[ "${EVENT_NAME}" == "workflow_dispatch" && "${WD_ENV:-}" == "staging" ]] && return 0
             return 1
           }
 
           should_verify_prod() {
-            # Tag push (legacy) or main merge: prod is deployed in the same pipeline as dev/staging.
+            # Prod deploy on push is limited to v* tags (tag-first Main CI).
             [[ "${EVENT_NAME}" == "push" && "${REF}" =~ ^refs/tags/v ]] && return 0
-            [[ "${EVENT_NAME}" == "push" && "${REF}" == "refs/heads/main" ]] && return 0
             [[ "${EVENT_NAME}" == "workflow_dispatch" && "${WD_ENV:-}" == "prod" ]] && return 0
             return 1
           }

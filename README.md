@@ -21,7 +21,7 @@ This repo also contains **Node scripts** under `scripts/` (Linear release milest
 | [scala-test](.github/workflows/scala-test.yml) | - | artifact-name | PACT_BROKER_PASSWORD (vars: PACT_BROKER_*) |
 | [scala-build-docker](.github/workflows/scala-build-docker.yml) | registry, image-name? | artifact-name, local-image | - |
 | [push-docker-image](.github/workflows/push-docker-image.yml) | registry, image-name?, artifact-name | image-ref | scw-secret-key |
-| [release-tag-name](.github/workflows/release-tag-name.yml) | bump-file, version-source (`node-package-json` or `plain-semver-file`, string) | tag | - |
+| [release-tag-name](.github/workflows/release-tag-name.yml) | bump-file, version-source (`node-package-json` or `plain-semver-file`, string), emit-tag-from-ref? | tag | - |
 | [pact-publish](.github/workflows/pact-publish.yml) | artifact-name, pacts-source (pacts-dir \| target-dir) | - | PACT_BROKER_PASSWORD (vars: PACT_BROKER_*) |
 | [pr-validation-scala](.github/workflows/pr-validation-scala.yml) | java-version? | - | - |
 | [linear-release-milestone](.github/workflows/linear-release-milestone.yml) | tag-name | - | linear-api-key |
@@ -36,7 +36,13 @@ This repo also contains **Node scripts** under `scripts/` (Linear release milest
 
 **`notify-failure` details:** pass **`needs-json: ${{ toJSON(needs) }}`** from the caller job so Slack always lists **caller** jobs whose `result` is `failure` (works without the Actions API). The workflow still tries the GitHub API when possible (`permissions: actions: read` on the **caller** workflow) to add nested job names, failed steps, and job links. Log bodies are never in the API—open the run or job link for full logs.
 
-**`deploy-scaleway` when:** **dev** and **staging** run on `push` to `main`, `feature/*`, or `fix/*`, and on `pull_request` (dev only) or matching `workflow_dispatch`. **prod** on `push`: either **`refs/tags/v*`** or **`push` to `main` where the commit has at least one `v*` semver tag** (`git tag --points-at` after `git fetch --tags`), so ordinary merges to `main` without a release tag do not deploy prod. **`workflow_dispatch`** prod is unchanged. If the tag is created slightly after the `main` push, the first run may not see it yet—**re-run** the workflow once the tag exists.
+**Tag-first Main CI (typical app repos):** the caller workflow runs on **`pull_request`** to `main` and on **`push` of tags `v*`** only (not on `push` to `main`), so merges to `main` do not duplicate **Release Please** with a full build.
+
+**`deploy-scaleway` when:** **dev** on `push` to `main`, `feature/*`, or `fix/*`, and on `pull_request` when the PR head is **not** `release-please--*`. **Staging** on those branch pushes, on **`push` tag `v*`**, and on `pull_request` when the head branch starts with **`release-please--`** (release PR preview). **prod** on **`push` tag `v*`** only (plus matching **`workflow_dispatch`**). Callers that still use `push` to `main` keep the old branch-push behaviour for dev/staging until they migrate triggers.
+
+**`verify-deploy`:** verifies **dev** on branch pushes and on non–release-please PRs; **staging** on branch pushes, on release-please PRs, on tag `v*`, and on `workflow_dispatch` staging; **prod** on tag `v*` and `workflow_dispatch` prod (not on `push` to `main` alone).
+
+**`release-tag-name`:** set **`emit-tag-from-ref: true`** when the caller only runs this job on a **`v*` tag** push so the tag string is taken from `github.ref_name` without a `HEAD^` diff.
 
 For the build/push workflows (node-build-push-docker, python-build-push-docker, scala-build-docker, push-docker-image), **image-name** is optional. When omitted, the image name is derived from the repository name (without the `brijyt-` prefix), e.g. `brijyt-agentic-reply-api` → `agentic-reply-api`. Pass **image-name** to override (e.g. `brijyt-docs` using `image-name: likec4-doc`).
 

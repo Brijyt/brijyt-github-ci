@@ -1,5 +1,8 @@
 name: Deploy to Scaleway
 
+# Tag-first Main CI: prod deploys only on v* tag push (or workflow_dispatch). Staging also on
+# v* tags and on PRs whose head branch is release-please--*. Dev on branch pushes and on PRs
+# except release-please heads (staging-only PRs).
 on:
   workflow_call:
     inputs:
@@ -21,58 +24,15 @@ on:
         type: string
 
 jobs:
-  # On push to main, github.ref is never a tag; prod must still run when release-please tagged this SHA.
-  # git tag --points-at detects tags on the commit without needing a separate on.push.tags pipeline.
-  gate:
-    runs-on: ubuntu-latest
-    outputs:
-      deploy_prod_on_push: ${{ steps.g.outputs.deploy_prod_on_push }}
-    steps:
-      - uses: actions/checkout@v4
-        if: github.event_name == 'push' && inputs.environment == 'prod' && github.ref == 'refs/heads/main'
-        with:
-          fetch-depth: 0
-          ref: ${{ github.sha }}
-
-      - id: g
-        env:
-          INPUT_ENV: ${{ inputs.environment }}
-          EVENT_NAME: ${{ github.event_name }}
-          REF: ${{ github.ref }}
-          SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          if [[ "${INPUT_ENV}" != "prod" || "${EVENT_NAME}" != "push" ]]; then
-            echo "deploy_prod_on_push=true" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-          case "${REF}" in
-            refs/tags/v*)
-              echo "deploy_prod_on_push=true" >> "${GITHUB_OUTPUT}"
-              ;;
-            refs/heads/main)
-              git fetch --tags --force
-              if git tag --points-at "${SHA}" | grep -qE '^v[0-9]'; then
-                echo "deploy_prod_on_push=true" >> "${GITHUB_OUTPUT}"
-              else
-                echo "deploy_prod_on_push=false" >> "${GITHUB_OUTPUT}"
-              fi
-              ;;
-            *)
-              echo "deploy_prod_on_push=false" >> "${GITHUB_OUTPUT}"
-              ;;
-          esac
-
   deploy:
-    needs: gate
     runs-on: ubuntu-latest
     timeout-minutes: 15
     if: |
       (github.event_name == 'push' && (
         (inputs.environment == 'dev' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/feature/') || startsWith(github.ref, 'refs/heads/fix/'))) ||
-        (inputs.environment == 'staging' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/feature/') || startsWith(github.ref, 'refs/heads/fix/'))) ||
-        (inputs.environment == 'prod' && needs.gate.outputs.deploy_prod_on_push == 'true')
-      )) || (github.event_name == 'pull_request' && inputs.environment == 'dev') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == inputs.environment)
+        (inputs.environment == 'staging' && ((github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/feature/') || startsWith(github.ref, 'refs/heads/fix/')) || startsWith(github.ref, 'refs/tags/v'))) ||
+        (inputs.environment == 'prod' && startsWith(github.ref, 'refs/tags/v'))
+      )) || (github.event_name == 'pull_request' && inputs.environment == 'dev' && !startsWith(github.head_ref, 'release-please--')) || (github.event_name == 'pull_request' && inputs.environment == 'staging' && startsWith(github.head_ref, 'release-please--')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == inputs.environment)
     environment:
       name: ${{ inputs.environment }}
     strategy:
