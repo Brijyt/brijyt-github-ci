@@ -44,12 +44,11 @@ jobs:
         env:
           BUMP_FILE: ${{ inputs.bump-file }}
           VERSION_SOURCE: ${{ inputs.version-source }}
-          EMIT_FROM_REF: ${{ inputs.emit-tag-from-ref }}
-          REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          if [[ "${EMIT_FROM_REF}" == "true" ]]; then
-            echo "tag=${REF_NAME}" >> "${GITHUB_OUTPUT}"
+          # Use expression injection for booleans — bash string compare to "true" is unreliable for workflow_call inputs.
+          if ${{ inputs.emit-tag-from-ref }}; then
+            echo "tag=${{ github.ref_name }}" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
           if ! git diff --name-only HEAD^ HEAD | grep -qx "${BUMP_FILE}"; then
