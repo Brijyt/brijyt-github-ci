@@ -1,6 +1,8 @@
 name: Run release-please
 
 # Shared: GitHub App token + googleapis/release-please-action. Caller repos keep vars/secrets and manifest paths.
+# Callers must set on the job that uses this workflow: permissions contents write + pull-requests write
+# (nested reusable workflows cannot exceed the caller job's GITHUB_TOKEN scope).
 on:
   workflow_call:
     inputs:
