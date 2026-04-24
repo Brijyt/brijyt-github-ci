@@ -1,0 +1,54 @@
+name: Run release-please
+
+# Shared: GitHub App token + googleapis/release-please-action. Caller repos keep vars/secrets and manifest paths.
+on:
+  workflow_call:
+    inputs:
+      config-file:
+        description: Path to release-please config JSON in the caller repository
+        required: false
+        type: string
+        default: .github/configs/release-please-config.json
+      manifest-file:
+        description: Path to release-please manifest JSON in the caller repository
+        required: false
+        type: string
+        default: .github/configs/release-please-manifest.json
+    secrets:
+      release_please_app_private_key:
+        description: PEM for the GitHub App (same as caller secret RELEASE_PLEASE_APP_PRIVATE_KEY)
+        required: true
+    outputs:
+      releases_created:
+        description: release-please releases_created step output
+        value: ${{ jobs.release_please.outputs.releases_created }}
+      tag_name:
+        description: release-please tag_name step output
+        value: ${{ jobs.release_please.outputs.tag_name }}
+
+jobs:
+  release_please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.RELEASE_PLEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.release_please_app_private_key }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: ${{ inputs.config-file }}
+          manifest-file: ${{ inputs.manifest-file }}
