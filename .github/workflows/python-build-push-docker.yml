@@ -109,8 +109,13 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # GHA cache: fast on repeat runs. Registry cache: survives GHA 10GB eviction; warm across branches.
+          cache-from: |
+            type=gha
+            type=registry,ref=${{ inputs.registry }}/${{ steps.set-image-name.outputs.name }}:buildcache
+          cache-to: |
+            type=gha,mode=max
+            type=registry,ref=${{ inputs.registry }}/${{ steps.set-image-name.outputs.name }}:buildcache,mode=max
           build-args: |
             APP_VERSION=${{ steps.version.outputs.version }}
             APP_BUILD_NUMBER=${{ steps.version.outputs.build_number }}
