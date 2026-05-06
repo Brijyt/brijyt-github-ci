@@ -2,6 +2,13 @@ name: Verify deploy
 on:
   workflow_call:
     inputs:
+      verify-mode:
+        description: >
+          How to validate /health. Allowed: tested-sha (default) checks .testedSha == github.sha;
+          status-up checks .status == "UP" (e.g. Quarkus/Keycloak health).
+        required: false
+        type: string
+        default: "tested-sha"
       health-host-template:
         description: >
           Optional host/base URL template for default verification URLs.
@@ -58,11 +65,19 @@ jobs:
           REF: ${{ github.ref }}
           GITHUB_HEAD_REF: ${{ github.head_ref }}
           WD_ENV: ${{ github.event.inputs.environment }}
+          VERIFY_MODE: ${{ inputs.verify-mode }}
           HEALTH_HOST_TEMPLATE: ${{ inputs.health-host-template }}
           HEALTH_SLUGS_JSON: ${{ inputs.health-slugs-json }}
           HEALTH_URLS_JSON: ${{ inputs.health-urls-json }}
         run: |
           set -euo pipefail
+          VERIFY_MODE="${VERIFY_MODE:-tested-sha}"
+          VERIFY_MODE="${VERIFY_MODE,,}"
+          if [[ "${VERIFY_MODE}" != "tested-sha" && "${VERIFY_MODE}" != "status-up" ]]; then
+            echo "::error::Invalid verify-mode: ${VERIFY_MODE}. Allowed: tested-sha, status-up"
+            exit 1
+          fi
+          echo "Verify mode: ${VERIFY_MODE}"
           REPO_SHORT="${GITHUB_REPOSITORY#*/}"
           APP_NAME="${REPO_SHORT#brijyt-}"
           # Web apps: *.brijyt.ai — API apps: *.brijyt.io (match repo name after brijyt- prefix)
@@ -99,19 +114,54 @@ jobs:
             fi
           }
 
+          health_matches_verify_mode() {
+            local body="$1"
+            case "${VERIFY_MODE}" in
+              tested-sha)
+                echo "$body" | jq -e --arg sha "$EXPECTED_SHA" '.testedSha == $sha' >/dev/null 2>&1
+                ;;
+              status-up)
+                echo "$body" | jq -e '.status == "UP"' >/dev/null 2>&1
+                ;;
+              *)
+                echo "::error::Invalid verify-mode: ${VERIFY_MODE}"
+                return 2
+                ;;
+            esac
+          }
+
+          health_mismatch_log() {
+            local body="$1"
+            case "${VERIFY_MODE}" in
+              tested-sha)
+                echo "$body" | jq -c '{buildNumber,testedSha}' 2>/dev/null || echo "(non-json body)"
+                ;;
+              status-up)
+                echo "$body" | jq -c '{status}' 2>/dev/null || echo "(non-json body)"
+                ;;
+            esac
+          }
+
           verify_health_endpoint() {
             local label="$1"
             local health_url="$2"
-            echo "Checking ${health_url} (${label}) for testedSha == ${EXPECTED_SHA}"
+            case "${VERIFY_MODE}" in
+              tested-sha)
+                echo "Checking ${health_url} (${label}) for testedSha == ${EXPECTED_SHA}"
+                ;;
+              status-up)
+                echo "Checking ${health_url} (${label}) for status == UP"
+                ;;
+            esac
             local i
             for i in $(seq 1 30); do
               local body
               if body="$(curl -fsS --max-time 30 -H 'Accept: application/json' "${health_url}" 2>/dev/null)"; then
-                if echo "$body" | jq -e --arg sha "$EXPECTED_SHA" '.testedSha == $sha' >/dev/null 2>&1; then
+                if health_matches_verify_mode "$body"; then
                   echo "Match on ${label} attempt ${i}"
                   return 0
                 fi
-                echo "Attempt ${i} (${label}): health OK but testedSha mismatch: $(echo "$body" | jq -c '{buildNumber,testedSha}' 2>/dev/null || true)"
+                echo "Attempt ${i} (${label}): health OK but verify mismatch ($(health_mismatch_log "$body"))"
               else
                 echo "Attempt ${i} (${label}): request failed or non-2xx"
               fi
