@@ -84,21 +84,64 @@ describe("findMilestoneIdByExactName", () => {
 });
 
 describe("findOrCreateProjectMilestone", () => {
-  it("passes description when non-empty", async () => {
-    const createProjectMilestone = async (payload) => ({
-      success: true,
-      projectMilestoneId: payload.description ? "created-with-description" : "",
-    });
+  it("passes description and targetDate when present on create", async () => {
+    let capturedPayload;
+    const createProjectMilestone = async (payload) => {
+      capturedPayload = payload;
+      return { success: true, projectMilestoneId: "created-with-description-and-date" };
+    };
     const projectMilestones = async () => ({ nodes: [] });
     const project = async () => ({ projectMilestones });
-    const client = { project, createProjectMilestone };
+    const client = { project, createProjectMilestone, updateProjectMilestone: async () => ({ success: true }) };
 
-    const milestoneId = await findOrCreateProjectMilestone(client, "project-1", "v1.2.3", "Release notes");
+    const milestoneId = await findOrCreateProjectMilestone(
+      client,
+      "project-1",
+      "v1.2.3",
+      "Release notes",
+      "2026-05-06",
+    );
 
-    expect(milestoneId).toBe("created-with-description");
+    expect(milestoneId).toBe("created-with-description-and-date");
+    expect(capturedPayload).toEqual({
+      projectId: "project-1",
+      name: "v1.2.3",
+      description: "Release notes",
+      targetDate: "2026-05-06",
+    });
   });
 
-  it("does not pass description when empty or whitespace", async () => {
+  it("updates targetDate when milestone already exists", async () => {
+    const createProjectMilestone = async () => {
+      throw new Error("createProjectMilestone should not be called");
+    };
+    let updateArgs;
+    const updateProjectMilestone = async (id, input) => {
+      updateArgs = { id, input };
+      return { success: true };
+    };
+    const projectMilestones = async () => ({
+      nodes: [{ id: "milestone-1", name: "v1.2.5", targetDate: "2026-05-01" }],
+    });
+    const project = async () => ({ projectMilestones });
+    const client = { project, createProjectMilestone, updateProjectMilestone };
+
+    const milestoneId = await findOrCreateProjectMilestone(
+      client,
+      "project-3",
+      "v1.2.5",
+      "Release notes",
+      "2026-05-06",
+    );
+
+    expect(milestoneId).toBe("milestone-1");
+    expect(updateArgs).toEqual({
+      id: "milestone-1",
+      input: { targetDate: "2026-05-06" },
+    });
+  });
+
+  it("does not pass description or targetDate when values are empty/invalid", async () => {
     let capturedPayload;
     const createProjectMilestone = async (payload) => {
       capturedPayload = payload;
@@ -106,9 +149,15 @@ describe("findOrCreateProjectMilestone", () => {
     };
     const projectMilestones = async () => ({ nodes: [] });
     const project = async () => ({ projectMilestones });
-    const client = { project, createProjectMilestone };
+    const client = { project, createProjectMilestone, updateProjectMilestone: async () => ({ success: true }) };
 
-    const milestoneId = await findOrCreateProjectMilestone(client, "project-2", "v1.2.4", "   ");
+    const milestoneId = await findOrCreateProjectMilestone(
+      client,
+      "project-2",
+      "v1.2.4",
+      "   ",
+      "2026/05/06",
+    );
 
     expect(milestoneId).toBe("created-without-description");
     expect(capturedPayload).toEqual({

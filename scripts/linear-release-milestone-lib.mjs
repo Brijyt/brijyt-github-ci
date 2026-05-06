@@ -78,28 +78,48 @@ export function findMilestoneIdByExactName(nodes, name) {
  * @param {string} projectId
  * @param {string} name milestone name (usually the release tag)
  * @param {string | undefined} description milestone description (usually release notes)
+ * @param {string | undefined} targetDate milestone target date (YYYY-MM-DD)
  * @returns {Promise<string>} Linear project milestone id
  */
-export async function findOrCreateProjectMilestone(client, projectId, name, description) {
+export async function findOrCreateProjectMilestone(client, projectId, name, description, targetDate) {
   const project = await client.project(projectId);
+  const hasDescription = typeof description === "string" && description.trim().length > 0;
+  const hasTargetDate = typeof targetDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(targetDate);
 
   const listAndMatch = async () => {
     const conn = await project.projectMilestones({ first: 100 });
-    return findMilestoneIdByExactName(conn.nodes, name);
+    return conn.nodes.find((m) => m.name === name) ?? null;
   };
 
-  const existingId = await listAndMatch();
-  if (existingId) {
-    console.log(`Reusing existing Linear milestone '${name}' (${existingId})`);
-    return existingId;
+  const syncTargetDate = async (milestone) => {
+    if (!hasTargetDate) {
+      return;
+    }
+    if (milestone.targetDate === targetDate) {
+      return;
+    }
+    const updatePayload = await client.updateProjectMilestone(milestone.id, { targetDate });
+    if (updatePayload.success !== true) {
+      throw new Error(
+        `Linear updateProjectMilestone failed: success=${updatePayload.success} projectMilestoneId=${milestone.id}`,
+      );
+    }
+    console.log(`Updated Linear milestone '${name}' (${milestone.id}) targetDate -> ${targetDate}`);
+  };
+
+  const existingMilestone = await listAndMatch();
+  if (existingMilestone?.id) {
+    await syncTargetDate(existingMilestone);
+    console.log(`Reusing existing Linear milestone '${name}' (${existingMilestone.id})`);
+    return existingMilestone.id;
   }
 
   try {
-    const hasDescription = typeof description === "string" && description.trim().length > 0;
     const payload = await client.createProjectMilestone({
       projectId,
       name,
       ...(hasDescription ? { description } : {}),
+      ...(hasTargetDate ? { targetDate } : {}),
     });
     const milestoneId = payload.projectMilestoneId;
     if (payload.success && milestoneId) {
@@ -116,9 +136,10 @@ export async function findOrCreateProjectMilestone(client, projectId, name, desc
     const combined = `${e?.message ?? e} ${first?.message ?? ""} ${presentable}`;
     if (/name not unique|already exists/i.test(combined)) {
       const after = await listAndMatch();
-      if (after) {
-        console.log(`Reusing Linear milestone '${name}' after duplicate create (${after})`);
-        return after;
+      if (after?.id) {
+        await syncTargetDate(after);
+        console.log(`Reusing Linear milestone '${name}' after duplicate create (${after.id})`);
+        return after.id;
       }
     }
     throw e;

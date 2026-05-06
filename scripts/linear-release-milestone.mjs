@@ -115,6 +115,19 @@ async function main() {
 
   const release = await githubGetJson(githubToken, `repos/${owner}/${repo}/releases/tags/${encTag}`);
   const releaseBody = release.body ?? "";
+  const releasePublishedAt = release.published_at;
+  let releaseTargetDate;
+  if (typeof releasePublishedAt === "string" && releasePublishedAt.trim().length > 0) {
+    const parsedPublishedAt = new Date(releasePublishedAt);
+    if (!Number.isNaN(parsedPublishedAt.getTime())) {
+      releaseTargetDate = parsedPublishedAt.toISOString().slice(0, 10);
+      console.log(`Release ${tagName} target date: ${releaseTargetDate}`);
+    } else {
+      console.warn(`::warning::Invalid release published_at for ${tagName}: ${releasePublishedAt}`);
+    }
+  } else {
+    console.warn(`::warning::Missing release published_at for ${tagName}; milestone target date will not be set`);
+  }
   console.log(`Release ${tagName} body size: ${releaseBody.length} bytes`);
 
   const compareRange = extractCompareRangeFromReleaseBody(releaseBody);
@@ -142,7 +155,13 @@ async function main() {
   const projectId = await findLinearProjectIdByName(client, projectName);
   console.log(`Resolved project '${projectName}' -> ${projectId}`);
 
-  const milestoneId = await findOrCreateProjectMilestone(client, projectId, tagName, releaseBody);
+  const milestoneId = await findOrCreateProjectMilestone(
+    client,
+    projectId,
+    tagName,
+    releaseBody,
+    releaseTargetDate,
+  );
 
   for (const ticket of tickets) {
     const issueId = await resolveIssueUuid(client, ticket);
