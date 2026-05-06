@@ -77,9 +77,10 @@ export function findMilestoneIdByExactName(nodes, name) {
  * @param {LinearClient} client
  * @param {string} projectId
  * @param {string} name milestone name (usually the release tag)
+ * @param {string | undefined} description milestone description (usually release notes)
  * @returns {Promise<string>} Linear project milestone id
  */
-export async function findOrCreateProjectMilestone(client, projectId, name) {
+export async function findOrCreateProjectMilestone(client, projectId, name, description) {
   const project = await client.project(projectId);
 
   const listAndMatch = async () => {
@@ -94,7 +95,12 @@ export async function findOrCreateProjectMilestone(client, projectId, name) {
   }
 
   try {
-    const payload = await client.createProjectMilestone({ projectId, name });
+    const hasDescription = typeof description === "string" && description.trim().length > 0;
+    const payload = await client.createProjectMilestone({
+      projectId,
+      name,
+      ...(hasDescription ? { description } : {}),
+    });
     const milestoneId = payload.projectMilestoneId;
     if (payload.success && milestoneId) {
       console.log(`Created Linear milestone '${name}' (${milestoneId})`);

@@ -142,7 +142,7 @@ async function main() {
   const projectId = await findLinearProjectIdByName(client, projectName);
   console.log(`Resolved project '${projectName}' -> ${projectId}`);
 
-  const milestoneId = await findOrCreateProjectMilestone(client, projectId, tagName);
+  const milestoneId = await findOrCreateProjectMilestone(client, projectId, tagName, releaseBody);
 
   for (const ticket of tickets) {
     const issueId = await resolveIssueUuid(client, ticket);

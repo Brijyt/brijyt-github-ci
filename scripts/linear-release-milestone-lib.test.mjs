@@ -3,6 +3,7 @@ import {
   collectUniqueTickets,
   extractBriTicketIdsFromText,
   extractCompareRangeFromReleaseBody,
+  findOrCreateProjectMilestone,
   findMilestoneIdByExactName,
   isLikelyIssueUuid,
   linearProjectNameFromGithubRepo,
@@ -79,5 +80,40 @@ describe("findMilestoneIdByExactName", () => {
 
   it("returns empty string when no match", () => {
     expect(findMilestoneIdByExactName([{ id: "m1", name: "v1.16.0" }], "v9.0.0")).toBe("");
+  });
+});
+
+describe("findOrCreateProjectMilestone", () => {
+  it("passes description when non-empty", async () => {
+    const createProjectMilestone = async (payload) => ({
+      success: true,
+      projectMilestoneId: payload.description ? "created-with-description" : "",
+    });
+    const projectMilestones = async () => ({ nodes: [] });
+    const project = async () => ({ projectMilestones });
+    const client = { project, createProjectMilestone };
+
+    const milestoneId = await findOrCreateProjectMilestone(client, "project-1", "v1.2.3", "Release notes");
+
+    expect(milestoneId).toBe("created-with-description");
+  });
+
+  it("does not pass description when empty or whitespace", async () => {
+    let capturedPayload;
+    const createProjectMilestone = async (payload) => {
+      capturedPayload = payload;
+      return { success: true, projectMilestoneId: "created-without-description" };
+    };
+    const projectMilestones = async () => ({ nodes: [] });
+    const project = async () => ({ projectMilestones });
+    const client = { project, createProjectMilestone };
+
+    const milestoneId = await findOrCreateProjectMilestone(client, "project-2", "v1.2.4", "   ");
+
+    expect(milestoneId).toBe("created-without-description");
+    expect(capturedPayload).toEqual({
+      projectId: "project-2",
+      name: "v1.2.4",
+    });
   });
 });
