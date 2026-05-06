@@ -2,6 +2,15 @@ name: Verify deploy
 on:
   workflow_call:
     inputs:
+      health-host-template:
+        description: >
+          Optional host/base URL template for default verification URLs.
+          Supports `{env}` placeholder (dev|staging|prod).
+          Example: https://connect-{env}.brijyt.io -> https://connect-dev.brijyt.io/health, etc.
+          Ignored when health-slugs-json or health-urls-json are provided.
+        required: false
+        type: string
+        default: ""
       health-slugs-json:
         description: >
           Optional JSON array of URL slugs (strings). For each active environment (dev, staging, prod), probes
@@ -49,6 +58,7 @@ jobs:
           REF: ${{ github.ref }}
           GITHUB_HEAD_REF: ${{ github.head_ref }}
           WD_ENV: ${{ github.event.inputs.environment }}
+          HEALTH_HOST_TEMPLATE: ${{ inputs.health-host-template }}
           HEALTH_SLUGS_JSON: ${{ inputs.health-slugs-json }}
           HEALTH_URLS_JSON: ${{ inputs.health-urls-json }}
         run: |
@@ -75,6 +85,8 @@ jobs:
               exit 1
             }
             echo "Using caller health-urls-json override"
+          elif [[ -n "${HEALTH_HOST_TEMPLATE// }" ]]; then
+            echo "Using caller health-host-template override"
           fi
 
           to_health_url() {
@@ -128,6 +140,11 @@ jobs:
                 idx=$((idx + 1))
                 verify_health_endpoint "${env_key}[${idx}]" "$(to_health_url "${base}")" || return 1
               done < <(echo "$HEALTH_URLS_JSON" | jq -r --arg e "$env_key" '.[$e][]? // empty')
+              return 0
+            fi
+            if [[ -n "${HEALTH_HOST_TEMPLATE// }" ]]; then
+              local base="${HEALTH_HOST_TEMPLATE//\{env\}/${env_key}}"
+              verify_health_endpoint "${env_key}" "$(to_health_url "${base}")" || return 1
               return 0
             fi
             verify_health_endpoint "${env_key}" "$(to_health_url "https://${APP_NAME}-${env_key}.${BASE_DOMAIN}")" || return 1
