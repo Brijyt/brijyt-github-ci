@@ -65,13 +65,22 @@ jobs:
           PACT_BROKER_USERNAME: ${{ vars.PACT_BROKER_USERNAME }}
           PACT_BROKER_PASSWORD: ${{ secrets.PACT_BROKER_PASSWORD }}
         run: |
-          docker run --rm \
-            -v "$PWD/target/pacts:/pacts:ro" \
-            -e PACT_BROKER_BASE_URL="$PACT_BROKER_BASE_URL" \
-            -e PACT_BROKER_USERNAME="$PACT_BROKER_USERNAME" \
-            -e PACT_BROKER_PASSWORD="$PACT_BROKER_PASSWORD" \
-            --network host \
-            pactfoundation/pact-cli:latest \
-            broker publish /pacts \
-            --consumer-app-version "${{ github.sha }}" \
-            --branch "${{ github.ref_name }}"
+          set -euo pipefail
+          pact_json_count=0
+          if [ -d "target/pacts" ]; then
+            pact_json_count="$(find target/pacts -maxdepth 1 -type f -name '*.json' 2>/dev/null | wc -l | tr -d ' ')"
+          fi
+          if [ "${pact_json_count}" -gt 0 ]; then
+            docker run --rm \
+              -v "$PWD/target/pacts:/pacts:ro" \
+              -e PACT_BROKER_BASE_URL="$PACT_BROKER_BASE_URL" \
+              -e PACT_BROKER_USERNAME="$PACT_BROKER_USERNAME" \
+              -e PACT_BROKER_PASSWORD="$PACT_BROKER_PASSWORD" \
+              --network host \
+              pactfoundation/pact-cli:latest \
+              broker publish /pacts \
+              --consumer-app-version "${{ github.sha }}" \
+              --branch "${{ github.ref_name }}"
+          else
+            echo "No pact files found to publish (target/pacts missing or has no .json contracts)"
+          fi
