@@ -1,0 +1,22 @@
+name: Deploy from ref — assert ref
+
+# Reusable: validates github.ref is a branch or a v* tag (for "Use workflow from" manual deploys).
+
+on:
+  workflow_call:
+
+jobs:
+  assert_ref:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate workflow ref
+        shell: bash
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "${REF}" =~ ^refs/heads/ ]] || [[ "${REF}" =~ ^refs/tags/v ]]; then
+            exit 0
+          fi
+          echo "::error::Use \"Use workflow from\" with a v* tag or a branch. Current ref: ${REF}" >&2
+          exit 1

@@ -1,0 +1,46 @@
+name: Deploy from ref — merge image ref
+
+# Reusable: pick image-ref from tag path (resolve) when that job succeeded, else from branch path (build/push).
+
+on:
+  workflow_call:
+    inputs:
+      tag_path_result:
+        description: Result of the tag resolve job (e.g. success or skipped)
+        required: true
+        type: string
+      tag_path_image_ref:
+        description: image-ref output from tag resolve (may be empty when skipped)
+        required: true
+        type: string
+      branch_path_result:
+        description: Result of the branch build/push job (e.g. success or skipped)
+        required: true
+        type: string
+      branch_path_image_ref:
+        description: image-ref output from branch build/push (may be empty when skipped)
+        required: true
+        type: string
+    outputs:
+      image-ref:
+        description: Selected image reference for deploy jobs
+        value: ${{ jobs.merge.outputs.image-ref }}
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    outputs:
+      image-ref: ${{ steps.pick.outputs.image_ref }}
+    steps:
+      - id: pick
+        env:
+          TAG_RESULT: ${{ inputs.tag_path_result }}
+          TAG_REF: ${{ inputs.tag_path_image_ref }}
+          BRANCH_REF: ${{ inputs.branch_path_image_ref }}
+        run: |
+          set -euo pipefail
+          if [ "${TAG_RESULT}" = "success" ]; then
+            echo "image_ref=${TAG_REF}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "image_ref=${BRANCH_REF}" >> "${GITHUB_OUTPUT}"
+          fi

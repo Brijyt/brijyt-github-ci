@@ -1,0 +1,40 @@
+name: Deploy from ref — resolve registry image
+
+# Reusable: builds image-ref for an existing registry tag (vars.REGISTRY + repo-derived image name + github.ref_name).
+
+on:
+  workflow_call:
+    outputs:
+      image-ref:
+        description: Full image reference for deploy (registry/image:tag)
+        value: ${{ jobs.resolve.outputs.image-ref }}
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      image-ref: ${{ steps.resolve.outputs.image_ref }}
+    steps:
+      - name: Resolve image ref from tag
+        id: resolve
+        shell: bash
+        env:
+          REGISTRY: ${{ vars.REGISTRY }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${TAG}" ]]; then
+            echo "Tag name is empty." >&2
+            exit 1
+          fi
+          if [[ "${TAG}" != v* ]]; then
+            echo "Tag must start with v (got: ${TAG})." >&2
+            exit 1
+          fi
+          if [[ -z "${REGISTRY}" ]]; then
+            echo "vars.REGISTRY is not set." >&2
+            exit 1
+          fi
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          IMAGE_NAME="${REPO_NAME#brijyt-}"
+          echo "image_ref=${REGISTRY}/${IMAGE_NAME}:${TAG}" >> "${GITHUB_OUTPUT}"

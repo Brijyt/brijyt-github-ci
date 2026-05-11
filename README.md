@@ -31,6 +31,9 @@ This repo also contains **Node scripts** under `scripts/` (Linear release milest
 | [notify-failure](.github/workflows/notify-failure.yml) | needs-json (optional, pass caller `toJSON(needs)`) | - | slack-bot-token |
 | [release-please-run](.github/workflows/release-please-run.yml) | config-file?, manifest-file? | releases_created, tag_name | release_please_app_private_key |
 | [list-repository-tags](.github/workflows/list-repository-tags.yml) | repository (choice: Brijyt service repo slug) | (writes v* tag list to the job summary) | BRIJYT_ORG_GITHUB_READ_TOKEN |
+| [deploy-from-ref-assert-ref](.github/workflows/deploy-from-ref-assert-ref.yml) | - | - | - |
+| [deploy-from-ref-resolve-registry-image](.github/workflows/deploy-from-ref-resolve-registry-image.yml) | (caller `vars.REGISTRY`, `github.ref_name`) | image-ref | - |
+| [deploy-from-ref-merge-image-ref](.github/workflows/deploy-from-ref-merge-image-ref.yml) | tag_path_result, tag_path_image_ref, branch_path_result, branch_path_image_ref | image-ref | - |
 
 **Linear workflows:** they check out this repository to run `scripts/linear-release-milestone.mjs` or `scripts/linear-mark-deployed.mjs` with `@linear/sdk`. Pass **`linear-api-key`** (typically `${{ secrets.LINEAR_API_KEY }}`). `GITHUB_REPOSITORY` and `GITHUB_TOKEN` (release milestone only) come from the **caller** workflow. The Linear project name is derived from the repo name (`brijyt-chat-web` → `chat-web`). For `actions/checkout` of this repo from another workflow, **`brijyt-github-ci` must be public** (or the caller must otherwise have read access); the caller’s default `GITHUB_TOKEN` only has access to the caller repository.
 
