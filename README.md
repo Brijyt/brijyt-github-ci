@@ -30,6 +30,7 @@ This repo also contains **Node scripts** under `scripts/` (Linear release milest
 | [notify-deploy](.github/workflows/notify-deploy.yml) | verified-dev?, verified-staging?, verified-prod? | - | slack-bot-token |
 | [notify-failure](.github/workflows/notify-failure.yml) | needs-json (optional, pass caller `toJSON(needs)`) | - | slack-bot-token |
 | [release-please-run](.github/workflows/release-please-run.yml) | config-file?, manifest-file? | releases_created, tag_name | release_please_app_private_key |
+| [list-repository-tags](.github/workflows/list-repository-tags.yml) | repository (choice: Brijyt service repo slug) | (writes v* tag list to the job summary) | BRIJYT_ORG_GITHUB_READ_TOKEN |
 
 **Linear workflows:** they check out this repository to run `scripts/linear-release-milestone.mjs` or `scripts/linear-mark-deployed.mjs` with `@linear/sdk`. Pass **`linear-api-key`** (typically `${{ secrets.LINEAR_API_KEY }}`). `GITHUB_REPOSITORY` and `GITHUB_TOKEN` (release milestone only) come from the **caller** workflow. The Linear project name is derived from the repo name (`brijyt-chat-web` → `chat-web`). For `actions/checkout` of this repo from another workflow, **`brijyt-github-ci` must be public** (or the caller must otherwise have read access); the caller’s default `GITHUB_TOKEN` only has access to the caller repository.
 
@@ -46,6 +47,10 @@ This repo also contains **Node scripts** under `scripts/` (Linear release milest
 **`verify-deploy`:** verifies **dev** on branch pushes and on non–release-please PRs; **staging** on branch pushes, on release-please PRs, on tag `v*`, and on `workflow_dispatch` staging; **prod** on tag `v*` and `workflow_dispatch` prod (not on `push` to `main` alone).
 
 **`release-tag-name`:** set **`emit-tag-from-ref: true`** when the caller only runs this job on a **`v*` tag** push so the tag string is taken from `github.ref_name` without a `HEAD^` diff.
+
+**`list-repository-tags`:** run manually from **this** repository. Add secret **`BRIJYT_ORG_GITHUB_READ_TOKEN`** (PAT with read access to private repos under the Brijyt org, e.g. `repo` read scope or fine-grained equivalent). Choose the **`repository`** input (service repo slug); the run prints **v** tags (version-sorted) in the job summary and a link to GitHub tags. Use that list together with **Use workflow from** in the target repo’s **Deploy from Tag** workflow.
+
+**Deploy from Tag (in each `brijyt-*` app repo):** the manual workflow keeps an **`environment`** input only. Pick the **tag or branch** with GitHub’s **Use workflow from** on the workflow run form: **`refs/tags/v*`** → deploy the image already pushed as `${{ vars.REGISTRY }}/<image>:${{ github.ref_name }}` (no build in that run). **`refs/heads/...`** → build and push from that branch (fast path: no main CI tests), then deploy, verify, and notify as today.
 
 For the build/push workflows (node-build-push-docker, python-build-push-docker, scala-build-docker, push-docker-image), **image-name** is optional. When omitted, the image name is derived from the repository name (without the `brijyt-` prefix), e.g. `brijyt-agentic-reply-api` → `agentic-reply-api`. Pass **image-name** to override (e.g. `brijyt-docs` using `image-name: likec4-doc`).
 

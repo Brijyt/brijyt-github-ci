@@ -1,0 +1,54 @@
+name: List repository tags
+
+# Manual workflow: list all v* tags for a Brijyt service repo (for deploy-from-tag / manual deploy).
+# Requires secret BRIJYT_ORG_GITHUB_READ_TOKEN on this repo (PAT with repo read access to org repos).
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: "Brijyt repository name (slug under github.com/Brijyt/)"
+        required: true
+        type: choice
+        options:
+          - brijyt-agentic-reply-api
+          - brijyt-bubble-api
+          - brijyt-dms-api
+          - brijyt-document-search-api
+          - brijyt-embedding-api
+          - brijyt-integration-api
+          - brijyt-chat-web
+          - brijyt-website-web
+          - brijyt-audit-web
+          - brijyt-connect-app
+          - brijyt-tools-mcp
+
+permissions:
+  contents: read
+
+jobs:
+  list_tags:
+    runs-on: ubuntu-latest
+    steps:
+      - name: List v* tags (GitHub API)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.BRIJYT_ORG_GITHUB_READ_TOKEN }}
+          REPO: ${{ inputs.repository }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::Configure secret BRIJYT_ORG_GITHUB_READ_TOKEN on brijyt-github-ci (PAT with read access to Brijyt repos)."
+            exit 1
+          fi
+          {
+            echo "## Tags for Brijyt/${REPO} (names starting with v, version-sorted)"
+            echo
+            echo "Use **Use workflow from** in the target repo to pick a tag or branch for **Deploy from Tag**."
+            echo
+            echo "Web: <https://github.com/Brijyt/${REPO}/tags>"
+            echo
+            echo '```'
+            gh api "repos/Brijyt/${REPO}/tags?per_page=100" -q '.[].name' | grep -E '^v' | sort -V -u || true
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
