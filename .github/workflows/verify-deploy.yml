@@ -21,7 +21,7 @@ on:
       health-slugs-json:
         description: >
           Optional JSON array of URL slugs (strings). For each active environment (dev, staging, prod), probes
-          https://{slug}-api-{env}.{brijyt.ai|brijyt.io}/health for every slug (domain follows the same *-api rule as default).
+          https://{slug}-api-{env}.{brijyt.ai|brijyt.io}/health for every slug (domain follows the default host rule: *-api and *-mcp repos use .io, other apps .ai).
           Example: ["embedding-pdf","embedding-generic"] → embedding-pdf-api-dev.brijyt.io, etc. When non-empty, takes
           precedence over health-urls-json.
         required: false
@@ -32,7 +32,7 @@ on:
           Optional JSON map of environment keys to arrays of base URLs (https host, optional path).
           Keys: dev, staging, prod. Example: {"dev":["https://svc-a-dev.example.io","https://svc-b-dev.example.io"]}.
           Each base gets /health appended unless the URL already ends with /health. When empty, URLs default to
-          https://{app}-{env}.{brijyt.ai|brijyt.io} from the repository name (same as before). Ignored when health-slugs-json is set.
+          https://{app}-{env}.{brijyt.ai|brijyt.io} from the repository name (*-api and *-mcp → .io; other apps → .ai). Ignored when health-slugs-json is set.
         required: false
         type: string
         default: ""
@@ -80,8 +80,8 @@ jobs:
           echo "Verify mode: ${VERIFY_MODE}"
           REPO_SHORT="${GITHUB_REPOSITORY#*/}"
           APP_NAME="${REPO_SHORT#brijyt-}"
-          # Web apps: *.brijyt.ai — API apps: *.brijyt.io (match repo name after brijyt- prefix)
-          if [[ "${REPO_SHORT}" == *-api ]]; then
+          # Web apps: *.brijyt.ai — APIs and MCP services: *.brijyt.io (repo suffix -api or -mcp; match name after brijyt- prefix)
+          if [[ "${REPO_SHORT}" == *-api || "${REPO_SHORT}" == *-mcp ]]; then
             BASE_DOMAIN="brijyt.io"
           else
             BASE_DOMAIN="brijyt.ai"
