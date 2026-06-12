@@ -234,29 +234,60 @@ jobs:
             return 1
           }
 
+          # When health-urls-json is set, only verify environments explicitly listed (non-empty array).
+          env_listed_in_health_urls_json() {
+            local env_key="$1"
+            [[ -n "${HEALTH_URLS_JSON// }" ]] || return 1
+            echo "$HEALTH_URLS_JSON" | jq -e --arg e "$env_key" '(.[$e] | type == "array") and (.[$e] | length > 0)' >/dev/null 2>&1
+          }
+
+          should_run_verify_for_env() {
+            local env_key="$1"
+            local gate_fn="$2"
+            if ! "${gate_fn}"; then
+              return 1
+            fi
+            if [[ -n "${HEALTH_URLS_JSON// }" ]] && ! env_listed_in_health_urls_json "${env_key}"; then
+              return 1
+            fi
+            return 0
+          }
+
+          skip_verify_reason() {
+            local env_key="$1"
+            local gate_fn="$2"
+            if ! "${gate_fn}"; then
+              echo "Skip verify ${env_key} (not deployed for this event)"
+              return
+            fi
+            if [[ -n "${HEALTH_URLS_JSON// }" ]] && ! env_listed_in_health_urls_json "${env_key}"; then
+              echo "Skip verify ${env_key} (not listed in health-urls-json)"
+            fi
+          }
+
           verified_dev=false
           verified_staging=false
           verified_prod=false
 
-          if should_verify_dev; then
+          if should_run_verify_for_env dev should_verify_dev; then
             verify_env_urls dev
             verified_dev=true
           else
-            echo "Skip verify dev (not deployed for this event)"
+            skip_verify_reason dev should_verify_dev
           fi
 
-          if should_verify_staging; then
+          if should_run_verify_for_env staging should_verify_staging; then
             verify_env_urls staging
             verified_staging=true
           else
-            echo "Skip verify staging (not deployed for this event)"
+            skip_verify_reason staging should_verify_staging
           fi
 
-          if should_verify_prod; then
+          if should_run_verify_for_env prod should_verify_prod; then
             verify_env_urls prod
             verified_prod=true
           else
-            echo "Skip verify prod (not deployed for this event)"
+            skip_verify_reason prod should_verify_prod
           fi
 
           {
