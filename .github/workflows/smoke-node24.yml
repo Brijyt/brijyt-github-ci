@@ -1,0 +1,29 @@
+name: Smoke Node 24 actions
+
+# Validates Node 24–compatible action pins on GitHub-hosted runners before merge.
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - run: npm ci && npm run test:run
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: smoke-artifact
+          path: package.json
+
+      - uses: actions/download-artifact@v6
+        with:
+          name: smoke-artifact
+          path: smoke-download
+
+      - run: test -f smoke-download/package.json
