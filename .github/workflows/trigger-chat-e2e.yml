@@ -1,0 +1,67 @@
+name: Trigger Chat E2E
+
+# Cross-repo workflow_dispatch on brijyt-chat-e2e requires a GitHub App installation token
+# (not the default GITHUB_TOKEN). Setup (org Brijyt):
+# 1. Organization settings → Developer settings → GitHub Apps → New GitHub App
+#    - Webhook: disabled
+#    - Repository permissions: Actions = Read and write
+# 2. Install the app on the org, scoped to brijyt-chat-e2e only
+# 3. Org variable E2E_TRIGGER_APP_CLIENT_ID (App Client ID from app settings)
+# 4. Org secret E2E_TRIGGER_APP_PRIVATE_KEY (PEM private key from the app)
+on:
+  workflow_call:
+    outputs:
+      e2e_conclusion:
+        description: "E2E run conclusion (success/failure/cancelled/timed_out)"
+        value: ${{ jobs.trigger.outputs.e2e_conclusion }}
+      e2e_run_url:
+        description: "URL of the E2E workflow run"
+        value: ${{ jobs.trigger.outputs.e2e_run_url }}
+    secrets:
+      e2e-trigger-app-private-key:
+        description: PEM for the E2E trigger GitHub App (caller secret E2E_TRIGGER_APP_PRIVATE_KEY)
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    outputs:
+      e2e_conclusion: ${{ steps.run.outputs.e2e_conclusion }}
+      e2e_run_url: ${{ steps.run.outputs.e2e_run_url }}
+    steps:
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.E2E_TRIGGER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.e2e-trigger-app-private-key }}
+          owner: brijyt
+          repositories: brijyt-chat-e2e
+          permission-actions: write
+
+      - name: Checkout trigger script
+        uses: actions/checkout@v6
+        with:
+          repository: brijyt/brijyt-github-ci
+          ref: main
+          sparse-checkout: .github/scripts/trigger_and_wait_workflow.py
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Trigger and wait for chat E2E
+        id: run
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          TARGET_REPO: brijyt/brijyt-chat-e2e
+          TARGET_WORKFLOW: e2e.yml
+          TARGET_REF: main
+          INPUTS_JSON: '{"environment": "staging"}'
+          TIMEOUT: "3600"
+        run: python .github/scripts/trigger_and_wait_workflow.py
