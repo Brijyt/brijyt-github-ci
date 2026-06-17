@@ -1,0 +1,55 @@
+name: Notify E2E
+on:
+  workflow_call:
+    inputs:
+      message-ts-staging:
+        description: "Slack message ts from notify-deploy staging post (thread parent)"
+        required: true
+        type: string
+      e2e-conclusion:
+        description: "E2E run conclusion (success/failure/cancelled/timed_out)"
+        required: true
+        type: string
+      e2e-run-url:
+        description: "URL of the E2E workflow run"
+        required: false
+        type: string
+        default: ""
+    secrets:
+      slack-bot-token:
+        required: true
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve E2E thread reply text
+        id: text
+        shell: bash
+        env:
+          E2E_CONCLUSION: ${{ inputs.e2e-conclusion }}
+          E2E_RUN_URL: ${{ inputs.e2e-run-url }}
+        run: |
+          set -euo pipefail
+          if [[ "${E2E_CONCLUSION}" == "success" ]]; then
+            prefix=":white_check_mark: E2E staging *passed*"
+          else
+            prefix=":x: E2E staging *failed*"
+          fi
+          text="${prefix} (\`${E2E_CONCLUSION}\`)"
+          if [[ -n "${E2E_RUN_URL}" ]]; then
+            text="${text}\n<${E2E_RUN_URL}|View E2E run>"
+          fi
+          {
+            printf 'thread_text=%s\n' "${text}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: E2E result thread reply
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.slack-bot-token }}
+          payload: |
+            channel: "#ci-cd"
+            thread_ts: "${{ inputs.message-ts-staging }}"
+            text: "${{ steps.text.outputs.thread_text }}"
