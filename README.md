@@ -16,7 +16,7 @@ This repo also contains **Node scripts** under `scripts/` (Linear release milest
 | [deploy-scaleway](.github/workflows/deploy-scaleway.yml) | environment, image-ref, scw-project-id, scw-container-id?, deploy-map? | - | SCW_SECRET_KEY |
 | [node-test](.github/workflows/node-test.yml) | node-version?, cache? | - | - |
 | [node-build-push-docker](.github/workflows/node-build-push-docker.yml) | registry, image-name?, build-args?, app-name? | image-ref | scw-secret-key |
-| [python-test](.github/workflows/python-test.yml) | python-version?, requirements-file?, test-path?, upload-pacts? | artifact-name | - |
+| [python-test](.github/workflows/python-test.yml) | python-version?, requirements-file?, test-path? (default `test/unit/`), upload-pacts?, run-pact-provider? | artifact-name | PACT_BROKER_PASSWORD (provider step; vars: PACT_BROKER_*) |
 | [python-build-push-docker](.github/workflows/python-build-push-docker.yml) | registry, image-name?, free-disk-space? | image-ref | scw-secret-key |
 | [scala-test](.github/workflows/scala-test.yml) | - | artifact-name | PACT_BROKER_PASSWORD (vars: PACT_BROKER_*) |
 | [scala-build-docker](.github/workflows/scala-build-docker.yml) | registry, image-name? | artifact-name, local-image | - |

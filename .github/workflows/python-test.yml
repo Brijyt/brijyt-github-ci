@@ -52,7 +52,23 @@ jobs:
           pip install -r ${{ inputs.requirements-file }}
 
       - name: Run unit tests
-        run: pytest ${{ inputs.test-path }} --cov=app --cov-report=term-missing
+        run: |
+          PATHS="${{ inputs.test-path }}"
+          [ -d test/api ] && PATHS="$PATHS test/api/"
+          pytest $PATHS --cov=app --cov-report=term-missing
+
+      - name: Detect integration tests
+        id: integration
+        run: |
+          if [ -d test/integration ] && find test/integration -name 'test_*.py' -print -quit | grep -q .; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run integration tests
+        if: steps.integration.outputs.present == 'true'
+        run: pytest test/integration/ -m integration -v
 
       - name: Run Pact consumer tests
         if: inputs.upload-pacts
