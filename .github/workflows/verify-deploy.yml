@@ -5,7 +5,8 @@ on:
       verify-mode:
         description: >
           How to validate /health. Allowed: tested-sha (default) checks .testedSha == github.sha;
-          status-up checks .status == "UP" (e.g. Quarkus/Keycloak health).
+          status-up checks .status == "UP" (e.g. Quarkus/Keycloak health);
+          private-health resolves Scaleway container endpoints and checks /health with X-Auth-Token (testedSha).
         required: false
         type: string
         default: "tested-sha"
@@ -36,6 +37,21 @@ on:
         required: false
         type: string
         default: ""
+      scaleway-containers-json:
+        description: >
+          Required when verify-mode is private-health. JSON map env → array of {"id":"<container-uuid>","label":"<name>"}.
+          Example: {"dev":[{"id":"...","label":"embedding-pdf"},{"id":"...","label":"embedding-generic"}],"staging":[...],"prod":[...]}.
+        required: false
+        type: string
+        default: ""
+      scaleway-region:
+        description: Scaleway region for container API lookups (private-health mode).
+        required: false
+        type: string
+        default: "fr-par"
+    secrets:
+      SCW_SECRET_KEY:
+        required: false
     outputs:
       verified-dev:
         description: "'true' when dev health matched the expected SHA"
@@ -69,13 +85,30 @@ jobs:
           HEALTH_HOST_TEMPLATE: ${{ inputs.health-host-template }}
           HEALTH_SLUGS_JSON: ${{ inputs.health-slugs-json }}
           HEALTH_URLS_JSON: ${{ inputs.health-urls-json }}
+          SCW_CONTAINERS_JSON: ${{ inputs.scaleway-containers-json }}
+          SCW_REGION: ${{ inputs.scaleway-region }}
+          SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
         run: |
           set -euo pipefail
           VERIFY_MODE="${VERIFY_MODE:-tested-sha}"
           VERIFY_MODE="${VERIFY_MODE,,}"
-          if [[ "${VERIFY_MODE}" != "tested-sha" && "${VERIFY_MODE}" != "status-up" ]]; then
-            echo "::error::Invalid verify-mode: ${VERIFY_MODE}. Allowed: tested-sha, status-up"
+          if [[ "${VERIFY_MODE}" != "tested-sha" && "${VERIFY_MODE}" != "status-up" && "${VERIFY_MODE}" != "private-health" ]]; then
+            echo "::error::Invalid verify-mode: ${VERIFY_MODE}. Allowed: tested-sha, status-up, private-health"
             exit 1
+          fi
+          if [[ "${VERIFY_MODE}" == "private-health" ]]; then
+            if [[ -z "${SCW_CONTAINERS_JSON// }" ]]; then
+              echo "::error::scaleway-containers-json is required when verify-mode is private-health"
+              exit 1
+            fi
+            if [[ -z "${SCW_SECRET_KEY:-}" ]]; then
+              echo "::error::SCW_SECRET_KEY secret is required when verify-mode is private-health"
+              exit 1
+            fi
+            echo "$SCW_CONTAINERS_JSON" | jq -e 'type == "object"' >/dev/null || {
+              echo "::error::scaleway-containers-json must be a JSON object keyed by env (dev|staging|prod)"
+              exit 1
+            }
           fi
           echo "Verify mode: ${VERIFY_MODE}"
           REPO_SHORT="${GITHUB_REPOSITORY#*/}"
@@ -117,7 +150,7 @@ jobs:
           health_matches_verify_mode() {
             local body="$1"
             case "${VERIFY_MODE}" in
-              tested-sha)
+              tested-sha|private-health)
                 echo "$body" | jq -e --arg sha "$EXPECTED_SHA" '.testedSha == $sha' >/dev/null 2>&1
                 ;;
               status-up)
@@ -133,7 +166,7 @@ jobs:
           health_mismatch_log() {
             local body="$1"
             case "${VERIFY_MODE}" in
-              tested-sha)
+              tested-sha|private-health)
                 echo "$body" | jq -c '{buildNumber,testedSha}' 2>/dev/null || echo "(non-json body)"
                 ;;
               status-up)
@@ -142,11 +175,29 @@ jobs:
             esac
           }
 
+          scaleway_container_health_url() {
+            local container_id="$1"
+            local api_url="https://api.scaleway.com/containers/v1beta1/regions/${SCW_REGION}/containers/${container_id}"
+            local response
+            response="$(curl -fsS --max-time 30 \
+              -H "X-Auth-Token: ${SCW_SECRET_KEY}" \
+              -H "Accept: application/json" \
+              "${api_url}")"
+            local endpoint
+            endpoint="$(echo "$response" | jq -r '(.domain_name // .public_endpoint // empty) | sub("^https://"; "")')"
+            if [[ -z "${endpoint}" ]]; then
+              echo "::error::Could not resolve endpoint for container ${container_id}" >&2
+              return 1
+            fi
+            echo "https://${endpoint%/}/health"
+          }
+
           verify_health_endpoint() {
             local label="$1"
             local health_url="$2"
+            local auth_header="${3:-}"
             case "${VERIFY_MODE}" in
-              tested-sha)
+              tested-sha|private-health)
                 echo "Checking ${health_url} (${label}) for testedSha == ${EXPECTED_SHA}"
                 ;;
               status-up)
@@ -156,7 +207,11 @@ jobs:
             local i
             for i in $(seq 1 30); do
               local body
-              if body="$(curl -fsS --max-time 30 -H 'Accept: application/json' "${health_url}" 2>/dev/null)"; then
+              local curl_args=(-fsS --max-time 30 -H 'Accept: application/json')
+              if [[ -n "${auth_header}" ]]; then
+                curl_args+=(-H "${auth_header}")
+              fi
+              if body="$(curl "${curl_args[@]}" "${health_url}" 2>/dev/null)"; then
                 if health_matches_verify_mode "$body"; then
                   echo "Match on ${label} attempt ${i}"
                   return 0
@@ -171,8 +226,29 @@ jobs:
             return 1
           }
 
+          verify_env_scaleway_containers() {
+            local env_key="$1"
+            echo "$SCW_CONTAINERS_JSON" | jq -e --arg e "$env_key" '(.[$e] | type == "array") and (.[$e] | length > 0)' >/dev/null || {
+              echo "::error::scaleway-containers-json has no containers for env ${env_key}"
+              return 1
+            }
+            local entry
+            while IFS= read -r entry; do
+              [[ -z "${entry}" ]] && continue
+              local container_id label health_url
+              container_id="$(echo "$entry" | jq -r '.id')"
+              label="$(echo "$entry" | jq -r '.label // .id')"
+              health_url="$(scaleway_container_health_url "${container_id}")"
+              verify_health_endpoint "${env_key}[${label}]" "${health_url}" "X-Auth-Token: ${SCW_SECRET_KEY}" || return 1
+            done < <(echo "$SCW_CONTAINERS_JSON" | jq -c --arg e "$env_key" '.[$e][]')
+          }
+
           verify_env_urls() {
             local env_key="$1"
+            if [[ "${VERIFY_MODE}" == "private-health" ]]; then
+              verify_env_scaleway_containers "${env_key}"
+              return $?
+            fi
             if [[ -n "${HEALTH_SLUGS_JSON// }" ]]; then
               local slug
               while IFS= read -r slug; do
@@ -247,6 +323,10 @@ jobs:
             if ! "${gate_fn}"; then
               return 1
             fi
+            if [[ "${VERIFY_MODE}" == "private-health" ]]; then
+              echo "$SCW_CONTAINERS_JSON" | jq -e --arg e "$env_key" '(.[$e] | type == "array") and (.[$e] | length > 0)' >/dev/null 2>&1
+              return $?
+            fi
             if [[ -n "${HEALTH_URLS_JSON// }" ]] && ! env_listed_in_health_urls_json "${env_key}"; then
               return 1
             fi
@@ -258,6 +338,12 @@ jobs:
             local gate_fn="$2"
             if ! "${gate_fn}"; then
               echo "Skip verify ${env_key} (not deployed for this event)"
+              return
+            fi
+            if [[ "${VERIFY_MODE}" == "private-health" ]]; then
+              if ! echo "$SCW_CONTAINERS_JSON" | jq -e --arg e "$env_key" '(.[$e] | type == "array") and (.[$e] | length > 0)' >/dev/null 2>&1; then
+                echo "Skip verify ${env_key} (not listed in scaleway-containers-json)"
+              fi
               return
             fi
             if [[ -n "${HEALTH_URLS_JSON// }" ]] && ! env_listed_in_health_urls_json "${env_key}"; then

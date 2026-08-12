@@ -26,7 +26,7 @@ This repo also contains **Node scripts** under `scripts/` (Linear release milest
 | [pr-validation-scala](.github/workflows/pr-validation-scala.yml) | java-version? | - | - |
 | [linear-release-milestone](.github/workflows/linear-release-milestone.yml) | tag-name | - | linear-api-key |
 | [linear-mark-deployed](.github/workflows/linear-mark-deployed.yml) | tag-name | - | linear-api-key |
-| [verify-deploy](.github/workflows/verify-deploy.yml) | health-slugs-json?, health-urls-json? | verified-dev, verified-staging, verified-prod | - |
+| [verify-deploy](.github/workflows/verify-deploy.yml) | verify-mode?, health-slugs-json?, health-urls-json?, scaleway-containers-json?, scaleway-region? | verified-dev, verified-staging, verified-prod | SCW_SECRET_KEY (private-health only) |
 | [notify-deploy](.github/workflows/notify-deploy.yml) | verified-dev?, verified-staging?, verified-prod? | message-ts-staging | slack-bot-token |
 | [notify-failure](.github/workflows/notify-failure.yml) | needs-json (optional, pass caller `toJSON(needs)`) | - | slack-bot-token |
 | [notify-e2e](.github/workflows/notify-e2e.yml) | message-ts-staging, e2e-conclusion, e2e-run-url? | - | slack-bot-token |
