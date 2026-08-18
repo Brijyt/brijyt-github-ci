@@ -21,6 +21,9 @@ on:
       message-ts-staging:
         description: "Slack message ts for staging notification (for thread replies)"
         value: ${{ jobs.notify.outputs.message_ts_staging }}
+      message-ts-prod:
+        description: "Slack message ts for prod notification (for thread replies)"
+        value: ${{ jobs.notify.outputs.message_ts_prod }}
     secrets:
       slack-bot-token:
         required: true
@@ -30,6 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       message_ts_staging: ${{ steps.ts_staging.outputs.message_ts_staging }}
+      message_ts_prod: ${{ steps.ts_prod.outputs.message_ts_prod }}
     steps:
       - name: Resolve Linear ticket and host links
         id: meta
@@ -114,6 +118,7 @@ jobs:
           echo "message_ts_staging=${message_ts}" >> "${GITHUB_OUTPUT}"
 
       - name: Notify Slack (prod)
+        id: slack_prod
         if: ${{ inputs.verified-prod == 'true' }}
         uses: slackapi/slack-github-action@v3.0.1
         with:
@@ -122,3 +127,14 @@ jobs:
           payload: |
             channel: "#ci-cd"
             text: "Deployed *${{ github.repository }}* to *prod* (${{ github.ref_name }} @ `${{ github.sha }}`)\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>${{ steps.meta.outputs.linear_suffix }}${{ steps.meta.outputs.host_suffix_prod }}"
+
+      - name: Extract prod message ts
+        id: ts_prod
+        if: ${{ always() && steps.slack_prod.outcome == 'success' }}
+        shell: bash
+        env:
+          SLACK_RESPONSE: ${{ steps.slack_prod.outputs.response }}
+        run: |
+          set -euo pipefail
+          message_ts="$(echo "${SLACK_RESPONSE}" | jq -r '.ts // empty')"
+          echo "message_ts_prod=${message_ts}" >> "${GITHUB_OUTPUT}"

@@ -10,6 +10,16 @@ name: Trigger Chat E2E
 # 4. Org secret E2E_TRIGGER_APP_PRIVATE_KEY (PEM private key from the app)
 on:
   workflow_call:
+    inputs:
+      environment:
+        description: "brijyt-chat-e2e workflow_dispatch environment"
+        required: false
+        type: choice
+        default: "staging"
+        options:
+          - dev
+          - staging
+          - prod
     outputs:
       e2e_conclusion:
         description: "E2E run conclusion (success/failure/cancelled/timed_out)"
@@ -62,6 +72,6 @@ jobs:
           TARGET_REPO: brijyt/brijyt-chat-e2e
           TARGET_WORKFLOW: e2e.yml
           TARGET_REF: main
-          INPUTS_JSON: '{"environment": "staging"}'
+          INPUTS_JSON: '{"environment": "${{ inputs.environment }}"}'
           TIMEOUT: "3600"
         run: python .github/scripts/trigger_and_wait_workflow.py
