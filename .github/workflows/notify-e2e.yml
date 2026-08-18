@@ -2,10 +2,21 @@ name: Notify E2E
 on:
   workflow_call:
     inputs:
-      message-ts-staging:
-        description: "Slack message ts from notify-deploy staging post (thread parent)"
-        required: true
+      environment:
+        description: "E2E environment label for Slack (staging or prod)"
+        required: false
         type: string
+        default: "staging"
+      message-ts:
+        description: "Slack message ts to reply in thread"
+        required: false
+        type: string
+        default: ""
+      message-ts-staging:
+        description: "Fallback Slack message ts from notify-deploy staging post"
+        required: false
+        type: string
+        default: ""
       e2e-conclusion:
         description: "E2E run conclusion (success/failure/cancelled/timed_out)"
         required: true
@@ -29,12 +40,21 @@ jobs:
         env:
           E2E_CONCLUSION: ${{ inputs.e2e-conclusion }}
           E2E_RUN_URL: ${{ inputs.e2e-run-url }}
+          E2E_ENVIRONMENT: ${{ inputs.environment }}
+          MESSAGE_TS: ${{ inputs.message-ts }}
+          MESSAGE_TS_STAGING: ${{ inputs.message-ts-staging }}
         run: |
           set -euo pipefail
+          thread_ts="${MESSAGE_TS:-${MESSAGE_TS_STAGING}}"
+          if [[ -z "${thread_ts}" ]]; then
+            echo "message-ts (or message-ts-staging fallback) is required" >&2
+            exit 1
+          fi
+          env_label="${E2E_ENVIRONMENT:-staging}"
           if [[ "${E2E_CONCLUSION}" == "success" ]]; then
-            prefix=":white_check_mark: E2E staging *passed*"
+            prefix=":white_check_mark: E2E ${env_label} *passed*"
           else
-            prefix=":x: E2E staging *failed*"
+            prefix=":x: E2E ${env_label} *failed*"
           fi
           text="${prefix} (\`${E2E_CONCLUSION}\`)"
           if [[ -n "${E2E_RUN_URL}" ]]; then
@@ -42,6 +62,7 @@ jobs:
           fi
           {
             printf 'thread_text=%s\n' "${text}"
+            printf 'thread_ts=%s\n' "${thread_ts}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: E2E result thread reply
@@ -51,5 +72,5 @@ jobs:
           token: ${{ secrets.slack-bot-token }}
           payload: |
             channel: "#ci-cd"
-            thread_ts: "${{ inputs.message-ts-staging }}"
+            thread_ts: "${{ steps.text.outputs.thread_ts }}"
             text: "${{ steps.text.outputs.thread_text }}"
