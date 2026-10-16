@@ -12,14 +12,10 @@ on:
   workflow_call:
     inputs:
       environment:
-        description: "brijyt-chat-e2e workflow_dispatch environment"
+        description: "brijyt-chat-e2e workflow_dispatch environment (dev, staging, or prod)"
         required: false
-        type: choice
+        type: string
         default: "staging"
-        options:
-          - dev
-          - staging
-          - prod
     outputs:
       e2e_conclusion:
         description: "E2E run conclusion (success/failure/cancelled/timed_out)"
