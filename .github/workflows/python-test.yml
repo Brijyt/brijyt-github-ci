@@ -23,6 +23,11 @@ on:
         required: false
         type: boolean
         default: false
+      free-disk-space:
+        description: "Remove preinstalled SDKs before pip install. Needed when torch/CUDA wheels exceed ubuntu-latest free space."
+        required: false
+        type: boolean
+        default: false
     outputs:
       artifact-name:
         description: "Name of the artifact containing pacts directory (when upload-pacts is true)"
@@ -34,6 +39,21 @@ jobs:
     outputs:
       artifact-name: ${{ steps.artifact-name.outputs.name }}
     steps:
+      - name: Free disk space (SDKs and APT)
+        if: inputs.free-disk-space
+        run: |
+          echo "Before:"
+          df -h
+          sudo rm -rf /usr/local/lib/android \
+                      /usr/share/dotnet \
+                      /opt/ghc \
+                      /opt/hostedtoolcache \
+                      /usr/local/share/boost
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+          echo "After:"
+          df -h
+
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
